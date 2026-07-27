@@ -1,0 +1,66 @@
+2026-05-24 ANUGA history=3 NODE2 full upgrade1+2 structured-v2 gate/norm scan
+
+Goal
+- Restore lr=1.0e-3 for upgrade2 and stabilize structured_v2 by branch normalization plus learned fusion.
+- Run four independent Slurm jobs, no Slurm array.
+- All four jobs keep all structured terms active:
+  use_f_local=true, use_f_spatial=true, use_f_forcing=true, use_f_coupling=true.
+- All four jobs use gate_init=active_mean. With four active terms, direct gates start at 0.25 each; softmax logits start at zero, giving 0.25 active weights each.
+- All four jobs include configs/ANUGA_History_Scan/anuga_node2_history3_full_upgrade1_2_oom_safe.yaml for solver.use_adjoint=true.
+- Base config is configs/ANUGA_History_Scan/base_ANUGA_history3.yaml, currently lr=1.0e-3.
+
+2 x 2 matrix
+- LayerNorm + direct gates:
+  config: configs/model_node2_upgrade2_0524_layernorm_direct_gated.yaml
+  script: sbatch_scripts/train_anuga_node2_history3_full_upgrade1_2_0524_layernorm_direct_gated.sh
+  submit: sbatch sbatch_scripts/train_anuga_node2_history3_full_upgrade1_2_0524_layernorm_direct_gated.sh
+
+- LayerNorm + softmax gates:
+  config: configs/model_node2_upgrade2_0524_layernorm_softmax_gated.yaml
+  script: sbatch_scripts/train_anuga_node2_history3_full_upgrade1_2_0524_layernorm_softmax_gated.sh
+  submit: sbatch sbatch_scripts/train_anuga_node2_history3_full_upgrade1_2_0524_layernorm_softmax_gated.sh
+
+- RMSNorm + direct gates:
+  config: configs/model_node2_upgrade2_0524_rmsnorm_direct_gated.yaml
+  script: sbatch_scripts/train_anuga_node2_history3_full_upgrade1_2_0524_rmsnorm_direct_gated.sh
+  submit: sbatch sbatch_scripts/train_anuga_node2_history3_full_upgrade1_2_0524_rmsnorm_direct_gated.sh
+
+- RMSNorm + softmax gates:
+  config: configs/model_node2_upgrade2_0524_rmsnorm_softmax_gated.yaml
+  script: sbatch_scripts/train_anuga_node2_history3_full_upgrade1_2_0524_rmsnorm_softmax_gated.sh
+  submit: sbatch sbatch_scripts/train_anuga_node2_history3_full_upgrade1_2_0524_rmsnorm_softmax_gated.sh
+
+Later coupling-off follow-up
+- After these finish, repeat the best norm/fusion setting with use_f_coupling=false.
+- The existing no-coupling overlay can be edited or copied for that follow-up:
+  configs/model_node2_upgrade2_no_coupling.yaml
+
+2026-05-26 ANUGA history=3 NODE2 full upgrade1+2 RMSNorm/direct-gated follow-up
+
+Goal
+- Focus on the best 0524 setting: term_norm=rmsnorm, fusion=direct_gated, lr=1.0e-3.
+- Test whether the small gain over upgrade1 can be stabilized or explained by coupling/regularization.
+- All jobs include configs/ANUGA_History_Scan/anuga_node2_history3_full_upgrade1_2_oom_safe.yaml for solver.use_adjoint=true.
+- Base config is configs/ANUGA_History_Scan/base_ANUGA_history3.yaml, currently lr=1.0e-3 and weight_decay=1.0e-5.
+
+4-job follow-up
+- RMSNorm + direct gates, coupling off:
+  config: configs/model_node2_upgrade2_0526_rmsnorm_direct_gated_no_coupling.yaml
+  script: sbatch_scripts/train_anuga_node2_history3_full_upgrade1_2_0526_rmsnorm_direct_gated_no_coupling.sh
+  submit: sbatch sbatch_scripts/train_anuga_node2_history3_full_upgrade1_2_0526_rmsnorm_direct_gated_no_coupling.sh
+
+- RMSNorm + direct gates, slight dynamics dropout:
+  config: configs/model_node2_upgrade2_0526_rmsnorm_direct_gated_dropout002.yaml
+  difference: model.continuous.dropout=0.02
+  script: sbatch_scripts/train_anuga_node2_history3_full_upgrade1_2_0526_rmsnorm_direct_gated_dropout002.sh
+  submit: sbatch sbatch_scripts/train_anuga_node2_history3_full_upgrade1_2_0526_rmsnorm_direct_gated_dropout002.sh
+
+- RMSNorm + direct gates, weight_decay=3.0e-5:
+  config: configs/model_node2_upgrade2_0526_rmsnorm_direct_gated_wd3e-5.yaml
+  script: sbatch_scripts/train_anuga_node2_history3_full_upgrade1_2_0526_rmsnorm_direct_gated_wd3e-5.sh
+  submit: sbatch sbatch_scripts/train_anuga_node2_history3_full_upgrade1_2_0526_rmsnorm_direct_gated_wd3e-5.sh
+
+- RMSNorm + direct gates, weight_decay=5.0e-5:
+  config: configs/model_node2_upgrade2_0526_rmsnorm_direct_gated_wd5e-5.yaml
+  script: sbatch_scripts/train_anuga_node2_history3_full_upgrade1_2_0526_rmsnorm_direct_gated_wd5e-5.sh
+  submit: sbatch sbatch_scripts/train_anuga_node2_history3_full_upgrade1_2_0526_rmsnorm_direct_gated_wd5e-5.sh

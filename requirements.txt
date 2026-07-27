@@ -1,0 +1,8 @@
+torch
+torch-geometric
+torchdiffeq
+torchcde
+PyYAML
+numpy
+scipy
+tqdm

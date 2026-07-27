@@ -1,0 +1,20 @@
+model:
+  node2_vector_field_type: structured_v2
+  continuous:
+    # Slight regularization only inside the continuous NODE vector field.
+    dropout: 0.02
+  structured_dynamics:
+    # 2026-05-26 follow-up from the best 0524 setting.
+    # Keep all four structured terms active and add mild dynamics dropout.
+    use_f_local: true
+    use_f_spatial: true
+    use_f_forcing: true
+    use_f_coupling: true
+
+    # Normalize each active derivative branch over latent channels before fusion.
+    term_norm: rmsnorm
+
+    # direct_gated learns one scalar gate per active branch. With gate_init:
+    # active_mean and four active terms, gates start at 0.25 each.
+    fusion: direct_gated
+    gate_init: active_mean

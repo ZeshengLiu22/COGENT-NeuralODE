@@ -1,0 +1,23 @@
+dataset:
+  name: issm
+  data_dir: ./data/ISSM/PIG_data
+  file_patterns:
+    - "*.mat"
+    - "*.npz"
+    - "*.pt"
+    - "*.pth"
+  split:
+    strategy: issm_rate_modulo
+    modulo: 20
+    val_remainder: 0
+    test_remainder: 10
+  issm: {}
+
+# Random Split:
+# dataset:
+#   split:
+#     strategy: random
+#     train: 0.7
+#     val: 0.15
+#     test: 0.15
+#     seed: 42

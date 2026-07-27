@@ -1,0 +1,24 @@
+model:
+  node2_vector_field_type: structured_v2
+  structured_dynamics:
+    use_f_local: true
+    use_f_spatial: true
+    use_f_forcing: true
+    use_f_coupling: false
+
+    # Normalize each active derivative branch over latent channels before
+    # fusion. Options: none, layernorm, rmsnorm.
+    term_norm: rmsnorm
+
+    # Fuse active branches after optional normalization.
+    # Options:
+    #   sum: raw sum, the original structured_v2 behavior
+    #   mean: average over active branches, no learned gates
+    #   direct_gated: learned scalar gates, initialized by gate_init
+    #   softmax_gated: learned logits; active branch weights are softmaxed
+    fusion: softmax_gated
+
+    # active_mean initializes direct gates to 1 / num_active_terms.
+    # For softmax_gated, zero logits give the same initial active mean
+    # weights, e.g. three active terms start at 1/3 each here.
+    gate_init: active_mean

@@ -1,0 +1,11 @@
+# Short smoke override for the real scripts/train.py path with the formal
+# uncapped training horizon.
+output_dir: experiments/dataloader_speed_sweep/formal_smoke_outputs
+
+training:
+  epochs: 1
+  val_every: 1
+
+evaluation:
+  full_rollout_on_val: true
+  checkpoint_metric: whole_rollout_rmse

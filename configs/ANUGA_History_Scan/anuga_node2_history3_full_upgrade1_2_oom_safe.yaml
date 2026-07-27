@@ -1,0 +1,5 @@
+# Targeted memory override for the ANUGA history=3 full upgrade1+2 run.
+# Keeps the model, horizon, batch size, and ablation configs unchanged while
+# avoiding storage of the full NODE solver graph across the long rollout.
+solver:
+  use_adjoint: true
