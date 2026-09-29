@@ -82,7 +82,8 @@ def _aggregate_predictions_for_scenario(
         averaged = pred_sum[:, :, channel_index] / denom
         pred_state[:, :, channel_index] = np.where(valid, averaged, np.nan).astype(np.float32)
 
-    pred_available = valid.any(axis=1).astype(np.uint8)
+    # A timestep is available only when every mesh node has a prediction.
+    pred_available = valid.all(axis=1).astype(np.uint8)
     return pred_state, pred_count, pred_available
 
 
@@ -106,6 +107,8 @@ def _select_trajectory_indices(
                 chosen.append(idx0)
         return sorted(set(chosen))
 
+    if num_frames <= 0:
+        return []
     if available_idx0.size <= num_frames:
         return [int(value) for value in available_idx0.tolist()]
     pick = [int(round(i * (available_idx0.size - 1) / max(num_frames - 1, 1))) for i in range(num_frames)]
@@ -126,7 +129,9 @@ def _save_scenario_timeseries(
     channel_names: list[str],
     scenario_id: str,
     sim_id: str,
+    evaluation_metadata: dict[str, Any] | None = None,
 ) -> None:
+    prediction_indices0 = np.where(pred_available > 0)[0]
     payload: dict[str, Any] = {
         "x": x.astype(np.float32, copy=False),
         "y": y.astype(np.float32, copy=False),
@@ -137,7 +142,26 @@ def _save_scenario_timeseries(
         "channel_names": np.asarray(channel_names, dtype=object),
         "scenario_id": np.asarray([scenario_id], dtype=object),
         "sim_id": np.asarray([sim_id], dtype=object),
+        "total_steps": np.asarray([time_s.shape[0]], dtype=np.int64),
+        "rollout_num_steps": np.asarray([prediction_indices0.size], dtype=np.int64),
+        "prediction_indices0": prediction_indices0.astype(np.int64, copy=False),
+        "prediction_indices1": (prediction_indices0 + 1).astype(np.int64, copy=False),
     }
+    if prediction_indices0.size:
+        payload["prediction_start_idx0"] = np.asarray([prediction_indices0[0]], dtype=np.int64)
+        payload["prediction_end_idx0"] = np.asarray([prediction_indices0[-1]], dtype=np.int64)
+    if evaluation_metadata:
+        for key in (
+            "known_steps",
+            "rollout_start_idx0",
+            "rollout_start_idx1",
+            "eval_history_len",
+            "train_config_history_len",
+            "train_config_future_len",
+        ):
+            value = evaluation_metadata.get(key)
+            if value is not None:
+                payload[key] = np.asarray([int(value)], dtype=np.int64)
     for channel_index, channel_name in enumerate(channel_names):
         safe_name = _safe_name(channel_name)
         payload[f"gt_{safe_name}"] = gt_state[:, :, channel_index].astype(np.float32, copy=False)
@@ -158,6 +182,9 @@ def _plot_depth_maps_for_scenario(
     chosen_idx0: list[int],
     levels: int,
 ) -> list[str]:
+    if not chosen_idx0:
+        return []
+
     import matplotlib
 
     matplotlib.use("Agg")
@@ -225,6 +252,9 @@ def generate_anuga_flood_maps(
 
     wanted_ids = None if not scenario_ids else set(scenario_ids)
     scenario_lookup = list(meta.get("scenario_lookup", []))
+    evaluation_metadata = dict(meta.get("evaluation_metadata", {}))
+    known_steps_value = evaluation_metadata.get("known_steps")
+    known_steps = int(known_steps_value) if known_steps_value is not None else None
     scenario_summaries: list[dict[str, Any]] = []
 
     for scenario_info in scenario_lookup:
@@ -246,6 +276,20 @@ def generate_anuga_flood_maps(
             num_nodes=int(gt_state.shape[1]),
             state_dim=int(gt_state.shape[2]),
         )
+        if str(meta.get("mode", "")) == "full_rollout" and known_steps is not None:
+            expected_available = np.zeros((gt_state.shape[0],), dtype=np.uint8)
+            expected_available[known_steps:] = 1
+            if not np.array_equal(pred_available, expected_available):
+                actual_indices1 = (np.where(pred_available > 0)[0] + 1).astype(int).tolist()
+                expected_indices1 = (np.where(expected_available > 0)[0] + 1).astype(int).tolist()
+                raise ValueError(
+                    f"Incomplete full-rollout coverage for {scenario_id}: "
+                    f"predicted trajectory indices={actual_indices1}, expected={expected_indices1}."
+                )
+            if np.any(pred_count[:known_steps] != 0) or np.any(pred_count[known_steps:] != 1):
+                raise ValueError(
+                    f"Expected exactly one prediction per node and future timestep for {scenario_id}."
+                )
 
         scenario_dir = ensure_dir(output_dir / _safe_name(scenario_id))
         timeseries_path = scenario_dir / "depth_timeseries.npz"
@@ -262,11 +306,12 @@ def generate_anuga_flood_maps(
             channel_names=channel_names,
             scenario_id=scenario_id,
             sim_id=str(scenario_info["sim_id"]),
+            evaluation_metadata=evaluation_metadata,
         )
 
         chosen_idx0 = _select_trajectory_indices(
             pred_available,
-            num_frames=max(int(num_frames), 1),
+            num_frames=max(int(num_frames), 0),
             trajectory_indices1=trajectory_indices1,
         )
         figure_paths = _plot_depth_maps_for_scenario(
@@ -282,6 +327,7 @@ def generate_anuga_flood_maps(
             levels=max(int(levels), 2),
         )
 
+        available_indices0 = np.where(pred_available > 0)[0]
         scenario_summary = {
             "scenario_id": scenario_id,
             "sim_id": str(scenario_info["sim_id"]),
@@ -291,6 +337,11 @@ def generate_anuga_flood_maps(
             "predicted_trajectory_indices1": (np.where(pred_available > 0)[0] + 1).astype(int).tolist(),
             "chosen_trajectory_indices1": [int(idx + 1) for idx in chosen_idx0],
             "summary_json": str((scenario_dir / "summary.json").resolve()),
+            "total_steps": int(gt_state.shape[0]),
+            "known_steps": known_steps,
+            "rollout_num_steps": int(np.count_nonzero(pred_available)),
+            "prediction_start_idx0": int(available_indices0[0]) if available_indices0.size else None,
+            "prediction_end_idx0": int(available_indices0[-1]) if available_indices0.size else None,
         }
         save_json(scenario_dir / "summary.json", scenario_summary)
         scenario_summaries.append(scenario_summary)
@@ -305,6 +356,7 @@ def generate_anuga_flood_maps(
         "output_dir": str(output_dir),
         "summary_json": str((Path(output_dir) / "summary.json").resolve()),
         "prediction_aggregation": "mean over repeated predictions for the same (trajectory_idx, node_index) pair",
+        "evaluation_metadata": evaluation_metadata,
         "scenarios": scenario_summaries,
     }
     save_json(Path(output_dir) / "summary.json", summary)

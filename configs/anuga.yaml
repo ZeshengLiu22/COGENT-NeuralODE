@@ -1,8 +1,8 @@
 dataset:
   name: anuga
-  data_dir: ./data/ANUGA/sims_austin_merged
+  data_dir: /home1/09575/zeshengliu/scratch/COGENT-NeuralODE/data/ANUGA/simulation_data_merged
   file_patterns:
     - "sim_*_merged.npz"
   anuga: {}
 
-# ./data/ANUGA/sims_austin_merged # ./data/ANUGA/simulation_data_merged
+# Stampede3 absolute data path for the ANUGA history scan.

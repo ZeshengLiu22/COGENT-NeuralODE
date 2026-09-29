@@ -4,7 +4,7 @@ output_dir: outputs
 
 dataset:
   name: anuga
-  data_dir: ./data
+  data_dir: /home1/09575/zeshengliu/scratch/COGENT-NeuralODE/data/ANUGA/simulation_data_merged
   file_patterns:
     - "*.npz"
   history_len: 8

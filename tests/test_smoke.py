@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sys
 import tempfile
 import unittest
@@ -16,6 +17,9 @@ from torch_geometric.loader import DataLoader
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
+SCRIPTS_ROOT = PROJECT_ROOT / "scripts"
+if str(SCRIPTS_ROOT) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_ROOT))
 
 from datasets import ADCIRCDataset, ANUGADataset, ISSMDataset
 from datasets.normalization import FeatureNormalizer
@@ -24,6 +28,7 @@ from models.continuous.node_latent_block import LatentNODEFunc
 from models.continuous.node_latent_block_structured import StructuredLatentNODEFunc
 from models.decoders.mlp_decoder import MLPDecoder
 from models.encoders.history_encoder import HistoryEncoder
+from run_full_rollout import load_evaluation_config, load_model_state_strict, load_saved_split_files
 from training import Evaluator
 from training.trainer import _truncate_future_horizon
 from utils.anuga_postprocess import generate_anuga_flood_maps
@@ -34,6 +39,7 @@ from utils.eval_artifacts import (
     save_evaluation_artifacts,
     summarize_full_rollout_bundle,
     summarize_window_bundle,
+    validate_full_rollout_bundle,
 )
 
 
@@ -468,6 +474,16 @@ class SmokeTest(unittest.TestCase):
         self.assertEqual(len(window_summary["leadtime_metrics"]), 2)
 
         rollout_bundle = collect_full_rollout_prediction_bundle(model, anuga, anuga_normalizer, device=torch.device("cpu"))
+        self.assertEqual(np.unique(rollout_bundle["trajectory_idx0"]).tolist(), [3, 4, 5])
+        self.assertEqual(np.unique(rollout_bundle["horizon_idx0"]).tolist(), [0, 1, 2])
+        rollout_coverage = validate_full_rollout_bundle(
+            rollout_bundle,
+            scenario_infos=anuga.scenario_infos,
+            known_steps=3,
+            node_counts=[3],
+        )
+        self.assertTrue(rollout_coverage["complete"])
+        self.assertEqual(rollout_coverage["max_rollout_steps"], 3)
         rollout_summary = summarize_full_rollout_bundle(
             rollout_bundle,
             channel_names,
@@ -484,6 +500,14 @@ class SmokeTest(unittest.TestCase):
             mode="full_rollout",
             channel_names=channel_names,
             scenario_infos=anuga.scenario_infos,
+            metadata={
+                "known_steps": 3,
+                "rollout_start_idx0": 2,
+                "rollout_start_idx1": 3,
+                "eval_history_len": 3,
+                "train_config_history_len": 3,
+                "train_config_future_len": 2,
+            },
         )
         self.assertTrue((self.root / "rollout_eval_metrics.json").exists())
         self.assertTrue((self.root / "rollout_eval_predictions_meta.json").exists())
@@ -523,6 +547,15 @@ class SmokeTest(unittest.TestCase):
         )
         self.assertTrue(np.all(shifted_rollout_bundle["history_end_idx0"] == 3))
         self.assertEqual(int(shifted_rollout_bundle["trajectory_idx0"].min()), 4)
+        self.assertEqual(int(shifted_rollout_bundle["trajectory_idx0"].max()), 5)
+        self.assertEqual(shifted_rollout_bundle["pred_phys"].shape, (3 * 2, 3))
+        shifted_coverage = validate_full_rollout_bundle(
+            shifted_rollout_bundle,
+            scenario_infos=anuga.scenario_infos,
+            known_steps=4,
+            node_counts=[3],
+        )
+        self.assertEqual(shifted_coverage["max_rollout_steps"], 2)
 
     def test_anuga_postprocess_generates_flood_maps(self) -> None:
         class ZeroModel(torch.nn.Module):
@@ -570,6 +603,101 @@ class SmokeTest(unittest.TestCase):
         self.assertEqual(depth_timeseries["gt_depth"].shape, (6, 3))
         self.assertEqual(depth_timeseries["pred_depth"].shape, (6, 3))
         self.assertTrue(np.any(depth_timeseries["pred_available"] > 0))
+
+    def test_full_rollout_anuga_export_saves_every_future_step(self) -> None:
+        class ZeroModel(torch.nn.Module):
+            def forward(self, data):
+                return torch.zeros_like(data.y_future)
+
+        anuga = ANUGADataset([self.root / "sim_000_merged.npz"], history_len=3, future_len=2, split="test")
+        normalizer = FeatureNormalizer.fit_from_trajectories(anuga.iter_trajectories())
+        anuga.normalizer = normalizer
+        channel_names = infer_state_channel_names("anuga", state_dim=3)
+        bundle = collect_full_rollout_prediction_bundle(
+            ZeroModel(),
+            anuga,
+            normalizer,
+            device=torch.device("cpu"),
+            start_t=2,
+        )
+        summary = summarize_full_rollout_bundle(bundle, channel_names)
+        artifact_stem = self.root / "full_rollout_eval"
+        save_evaluation_artifacts(
+            artifact_stem,
+            bundle=bundle,
+            summary=summary,
+            dataset_name="anuga",
+            split="test",
+            mode="full_rollout",
+            channel_names=channel_names,
+            scenario_infos=anuga.scenario_infos,
+            metadata={
+                "known_steps": 3,
+                "rollout_start_idx0": 2,
+                "rollout_start_idx1": 3,
+                "eval_history_len": 3,
+                "train_config_history_len": 3,
+                "train_config_future_len": 2,
+            },
+        )
+
+        flood_summary = generate_anuga_flood_maps(
+            self.root / "full_rollout_eval_predictions.npz",
+            output_dir=self.root / "full_rollout_eval_flood_maps",
+            num_frames=0,
+        )
+        scenario_summary = flood_summary["scenarios"][0]
+        self.assertEqual(scenario_summary["known_steps"], 3)
+        self.assertEqual(scenario_summary["rollout_num_steps"], 3)
+        self.assertEqual(scenario_summary["predicted_trajectory_indices1"], [4, 5, 6])
+        self.assertEqual(scenario_summary["figure_paths"], [])
+
+        timeseries = np.load(scenario_summary["timeseries_npz"], allow_pickle=True)
+        self.assertEqual(timeseries["gt_depth"].shape, (6, 3))
+        self.assertEqual(timeseries["pred_depth"].shape, (6, 3))
+        self.assertEqual(timeseries["gt_xmomentum"].shape, (6, 3))
+        self.assertEqual(timeseries["pred_ymomentum"].shape, (6, 3))
+        self.assertEqual(timeseries["pred_available"].tolist(), [0, 0, 0, 1, 1, 1])
+        self.assertTrue(np.all(timeseries["pred_count"][:3] == 0))
+        self.assertTrue(np.all(timeseries["pred_count"][3:] == 1))
+        self.assertEqual(timeseries["prediction_indices0"].tolist(), [3, 4, 5])
+        self.assertEqual(int(timeseries["known_steps"][0]), 3)
+        self.assertEqual(int(timeseries["rollout_num_steps"][0]), 3)
+
+    def test_rollout_uses_checkpoint_config_and_preserves_saved_split_order(self) -> None:
+        checkpoint_config = {
+            "dataset": {"name": "anuga", "history_len": 4, "future_len": 64},
+            "evaluation": {"full_rollout_known_steps": 8},
+        }
+        resolved_config, source = load_evaluation_config({"config": checkpoint_config}, config_paths=None)
+        self.assertEqual(source, "checkpoint")
+        self.assertEqual(resolved_config, checkpoint_config)
+        self.assertIsNot(resolved_config, checkpoint_config)
+
+        first = self.root / "sim_000_merged.npz"
+        second = self.root / "sim_001_merged.npz"
+        second.write_bytes(first.read_bytes())
+        manifest_path = self.root / "split_files.json"
+        with manifest_path.open("w", encoding="utf-8") as handle:
+            json.dump(
+                {
+                    "train": [str(second), str(first)],
+                    "val": [str(first)],
+                    "test": [str(second), str(first)],
+                },
+                handle,
+            )
+        split_files = load_saved_split_files(manifest_path)
+        self.assertEqual(split_files["train"], [second, first])
+        self.assertEqual(split_files["test"], [second, first])
+
+        model = torch.nn.Linear(2, 1)
+        saved_state = dict(model.state_dict())
+        saved_state["dynamics.control._t"] = torch.zeros(1)
+        skipped_keys = load_model_state_strict(model, saved_state)
+        self.assertEqual(skipped_keys, ["dynamics.control._t"])
+        with self.assertRaises(RuntimeError):
+            load_model_state_strict(model, {"bias": model.bias.detach().clone()})
 
 
 if __name__ == "__main__":

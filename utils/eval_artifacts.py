@@ -314,6 +314,129 @@ def collect_full_rollout_prediction_bundle(
     return _finalize_bundle(bundle, state_dim=state_dim)
 
 
+def validate_full_rollout_bundle(
+    bundle: dict[str, np.ndarray],
+    *,
+    scenario_infos: list[dict[str, Any]],
+    known_steps: int,
+    node_counts: list[int],
+) -> dict[str, Any]:
+    """Verify that every future timestep contains one prediction per node."""
+
+    known_steps = int(known_steps)
+    if len(node_counts) != len(scenario_infos):
+        raise ValueError(
+            f"Expected one node count per scenario, got {len(node_counts)} counts "
+            f"for {len(scenario_infos)} scenarios."
+        )
+
+    required_fields = (
+        "pred_norm",
+        "target_norm",
+        "pred_phys",
+        "target_phys",
+        "scenario_index",
+        "node_index",
+        "trajectory_idx0",
+        "horizon_idx0",
+    )
+    missing_fields = [name for name in required_fields if name not in bundle]
+    if missing_fields:
+        raise KeyError(f"Full-rollout bundle is missing required fields: {missing_fields}")
+
+    row_count = int(bundle["scenario_index"].shape[0])
+    mismatched_fields = [
+        name
+        for name in required_fields
+        if int(bundle[name].shape[0]) != row_count
+    ]
+    if mismatched_fields:
+        raise ValueError(
+            f"Full-rollout bundle fields do not share the same row count ({row_count}): "
+            f"{mismatched_fields}"
+        )
+
+    scenario_rows: list[dict[str, Any]] = []
+    for scenario_index, (info, node_count_value) in enumerate(zip(scenario_infos, node_counts)):
+        total_steps = int(info["length"])
+        node_count = int(node_count_value)
+        rollout_steps = total_steps - known_steps
+        if rollout_steps < 1:
+            raise ValueError(
+                f"Scenario {info['scenario_id']} has {total_steps} steps, which does not leave "
+                f"a future timestep after known_steps={known_steps}."
+            )
+        if node_count < 1:
+            raise ValueError(f"Scenario {info['scenario_id']} has invalid node_count={node_count}.")
+
+        scenario_mask = bundle["scenario_index"] == scenario_index
+        expected_rows = rollout_steps * node_count
+        actual_rows = int(np.count_nonzero(scenario_mask))
+        if actual_rows != expected_rows:
+            raise ValueError(
+                f"Scenario {info['scenario_id']} has {actual_rows} saved prediction rows; "
+                f"expected {expected_rows} ({rollout_steps} timesteps x {node_count} nodes)."
+            )
+
+        trajectory_idx0 = bundle["trajectory_idx0"][scenario_mask].astype(np.int64, copy=False)
+        horizon_idx0 = bundle["horizon_idx0"][scenario_mask].astype(np.int64, copy=False)
+        node_index = bundle["node_index"][scenario_mask].astype(np.int64, copy=False)
+        if (
+            int(trajectory_idx0.min()) != known_steps
+            or int(trajectory_idx0.max()) != total_steps - 1
+        ):
+            raise ValueError(
+                f"Scenario {info['scenario_id']} does not span the expected absolute trajectory "
+                f"indices {known_steps}..{total_steps - 1}."
+            )
+        if int(horizon_idx0.min()) != 0 or int(horizon_idx0.max()) != rollout_steps - 1:
+            raise ValueError(
+                f"Scenario {info['scenario_id']} does not span horizon indices "
+                f"0..{rollout_steps - 1}."
+            )
+        if int(node_index.min()) != 0 or int(node_index.max()) != node_count - 1:
+            raise ValueError(
+                f"Scenario {info['scenario_id']} does not span node indices 0..{node_count - 1}."
+            )
+
+        trajectory_counts = np.bincount(trajectory_idx0 - known_steps, minlength=rollout_steps)
+        horizon_counts = np.bincount(horizon_idx0, minlength=rollout_steps)
+        if trajectory_counts.shape[0] != rollout_steps or not np.all(trajectory_counts == node_count):
+            raise ValueError(
+                f"Scenario {info['scenario_id']} is missing one or more node predictions at an "
+                "absolute trajectory timestep."
+            )
+        if horizon_counts.shape[0] != rollout_steps or not np.all(horizon_counts == node_count):
+            raise ValueError(
+                f"Scenario {info['scenario_id']} is missing one or more node predictions at a "
+                "rollout horizon timestep."
+            )
+
+        scenario_rows.append(
+            {
+                "scenario_index": scenario_index,
+                "scenario_id": str(info["scenario_id"]),
+                "total_steps": total_steps,
+                "known_steps": known_steps,
+                "rollout_steps": rollout_steps,
+                "node_count": node_count,
+                "first_prediction_idx0": known_steps,
+                "last_prediction_idx0": total_steps - 1,
+                "saved_rows": actual_rows,
+            }
+        )
+
+    rollout_lengths = [row["rollout_steps"] for row in scenario_rows]
+    return {
+        "complete": True,
+        "scenario_count": len(scenario_rows),
+        "known_steps": known_steps,
+        "min_rollout_steps": min(rollout_lengths),
+        "max_rollout_steps": max(rollout_lengths),
+        "scenarios": scenario_rows,
+    }
+
+
 def _error_sums(pred: np.ndarray, target: np.ndarray) -> tuple[np.ndarray, np.ndarray, int]:
     diff = pred.astype(np.float64) - target.astype(np.float64)
     sq_sum = np.square(diff).sum(axis=0)
@@ -790,6 +913,7 @@ def save_evaluation_artifacts(
             "channel_names": channel_names,
             "row_format": "Each row in the NPZ arrays corresponds to one (sample_index, node_index, trajectory_idx) point with all state channels stored across columns.",
             "scenario_lookup": scenario_lookup,
+            "evaluation_metadata": metadata or {},
         },
     )
 
