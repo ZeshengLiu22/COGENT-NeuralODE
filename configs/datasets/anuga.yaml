@@ -1,0 +1,12 @@
+dataset:
+  name: anuga
+  data_dir: /home1/09575/zeshengliu/scratch/COGENT-NeuralODE/data/ANUGA/simulation_data_merged
+  file_patterns:
+  - sim_*_merged.npz
+  anuga: {}
+  split:
+    strategy: random
+    train: 0.6
+    val: 0.2
+    test: 0.2
+    seed: 42

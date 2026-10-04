@@ -13,7 +13,7 @@ from unittest.mock import patch
 
 import numpy as np
 import torch
-from torch_geometric.loader import DataLoader
+import yaml
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 for path in (PROJECT_ROOT, PROJECT_ROOT / "scripts"):
@@ -22,8 +22,8 @@ for path in (PROJECT_ROOT, PROJECT_ROOT / "scripts"):
 
 import check_solver_convergence
 import evaluate
-import run_full_rollout
-from datasets.factory import build_dataset
+import train
+from datasets.factory import build_dataset, build_loader
 from datasets.normalization import FeatureNormalizer
 from datasets.split_utils import make_split_manifest, resolve_split_manifest
 from models import build_model
@@ -48,9 +48,9 @@ class CheckpointFoundationTest(unittest.TestCase):
                 edge_index=np.array([[0, 1], [1, 0]], dtype=np.int64),
                 times=np.arange(6, dtype=np.float32),
             )
-        self.config = load_config_bundle([PROJECT_ROOT / "configs/base_sample.yaml"])
+        self.config = load_config_bundle([PROJECT_ROOT / "configs/default.yaml", PROJECT_ROOT / "configs/models/node2.yaml"])
         self.config["dataset"].update(name="adcirc", data_dir=str(self.data_dir), history_len=2, future_len=2)
-        self.config["evaluation"].update(num_workers=0, full_rollout_known_steps=2)
+        self.config["evaluation"].update(known_steps=2)
         self.config["amp"]["mode"] = "bf16"
         model = self.config["model"]
         model.update(latent_dim=4, decoder_hidden_dims=[4], use_residual_decoder=True, relative_time_scale=4.0)
@@ -78,6 +78,8 @@ class CheckpointFoundationTest(unittest.TestCase):
 
     def test_model_config_is_authoritative(self) -> None:
         for section, override in (
+            ("dataset", {"history_len": 1}),
+            ("dataset", {"future_len": 3}),
             ("model", {"use_residual_decoder": False}),
             ("model", {"relative_time_scale": 99.0}),
             ("model", {"history_encoder": {"history_encoder_type": "transformer"}}),
@@ -96,11 +98,15 @@ class CheckpointFoundationTest(unittest.TestCase):
     def test_only_explicit_runtime_overrides_and_fp32_default(self) -> None:
         self.checkpoint["config"]["evaluation"]["amp_mode"] = "bf16"
         restored = restore_evaluation_config(self.checkpoint, runtime_overrides={
-            "dataset": {"history_len": 1, "future_len": 3},
-            "evaluation": {"batch_size": 2, "num_workers": 0},
+            "dataset": {"data_dir": str(self.data_dir)},
+            "evaluation": {"known_steps": 3},
         })
         self.assertEqual(restored["evaluation"]["amp_mode"], "none")
-        self.assertEqual(restored["dataset"]["history_len"], 1)
+        self.assertEqual(restored["dataset"]["history_len"], 2)
+        self.assertEqual(restored["evaluation"]["known_steps"], 3)
+        self.assertEqual(restored["model"]["relative_time_scale"], 4.0)
+        with self.assertRaisesRegex(ValueError, "known_steps must be >="):
+            restore_evaluation_config(self.checkpoint, {"evaluation": {"known_steps": 1}})
         self.assertEqual(self.checkpoint["config"]["dataset"]["history_len"], 2)
         explicit = restore_evaluation_config(self.checkpoint, {"evaluation": {"amp_mode": "bf16"}})
         self.assertEqual(explicit["evaluation"]["amp_mode"], "bf16")
@@ -133,16 +139,16 @@ class CheckpointFoundationTest(unittest.TestCase):
 
     def test_standalone_evaluation_matches_evaluator_without_config(self) -> None:
         (self.data_dir / "unrelated.npz").touch()
-        output_dir = self.root / "window_artifacts"
+        output_dir = self.root / "rollout_artifacts"
         with patch.object(sys, "argv", ["evaluate.py", "--checkpoint", str(self.checkpoint_path), "--device", "cpu", "--output-dir", str(output_dir)]):
             evaluate.main()
-        metrics = json.loads((output_dir / "best.window_metrics.json").read_text())
+        metrics = json.loads((output_dir / "best.test.known2.full_rollout_metrics.json").read_text())
         dataset = build_dataset("adcirc", self.split_files["test"], "test", self.config, self.normalizer)
-        expected = Evaluator(self.model, self.normalizer, torch.device("cpu")).evaluate_loader(DataLoader(dataset, batch_size=1))
-        self.assertAlmostEqual(metrics["norm_rmse"], expected["norm_rmse"], places=6)
-        metadata = json.loads((output_dir / "best.window_predictions_meta.json").read_text())["evaluation_metadata"]
+        expected = Evaluator(self.model, self.normalizer, torch.device("cpu")).evaluate_full_rollout(dataset, known_steps=2)
+        self.assertAlmostEqual(metrics["whole_rollout_norm_rmse"], expected["whole_rollout_norm_rmse"], places=6)
+        metadata = json.loads((output_dir / "best.test.known2.full_rollout_predictions_meta.json").read_text())["evaluation_metadata"]
         self.assertEqual(metadata["amp_mode"], "none")
-        self.assertEqual(metadata["split_source"], "checkpoint.split_manifest")
+        self.assertEqual(metadata["split_manifest"], "checkpoint.split_manifest")
 
     def test_full_rollout_uses_embedded_split_after_relocation(self) -> None:
         relocated = self.root / "relocated"
@@ -150,13 +156,60 @@ class CheckpointFoundationTest(unittest.TestCase):
         shutil.rmtree(self.data_dir)
         output_dir = self.root / "rollout_artifacts"
         with patch.object(sys, "argv", [
-            "run_full_rollout.py", "--checkpoint", str(self.checkpoint_path), "--device", "cpu",
+            "evaluate.py", "--checkpoint", str(self.checkpoint_path), "--device", "cpu",
             "--data-dir", str(relocated), "--output-dir", str(output_dir),
         ]):
-            run_full_rollout.main()
-        metadata = json.loads((output_dir / "best.full_rollout_predictions_meta.json").read_text())["evaluation_metadata"]
+            evaluate.main()
+        metadata = json.loads((output_dir / "best.test.known2.full_rollout_predictions_meta.json").read_text())["evaluation_metadata"]
         self.assertEqual(metadata["split_manifest"], "checkpoint.split_manifest")
         self.assertEqual(metadata["amp_mode"], "none")
+
+    def test_inference_start_override_does_not_change_history_or_time_scale(self) -> None:
+        output_dir = self.root / "start_override"
+        override = self.root / "known4.yaml"
+        override.write_text("evaluation:\n  known_steps: 4\n")
+        with patch.object(sys, "argv", [
+            "evaluate.py", "--checkpoint", str(self.checkpoint_path), "--device", "cpu",
+            "--config", str(override), "--output-dir", str(output_dir),
+        ]):
+            evaluate.main()
+        with np.load(output_dir / "best.test.known4.full_rollout_predictions.npz") as data:
+            self.assertEqual(np.unique(data["trajectory_idx0"]).tolist(), [4, 5])
+        meta = json.loads((output_dir / "best.test.known4.full_rollout_predictions_meta.json").read_text())
+        self.assertEqual(meta["evaluation_metadata"]["history_len"], 2)
+        with patch.object(sys, "argv", [
+            "evaluate.py", "--checkpoint", str(self.checkpoint_path), "--device", "cpu",
+            "--known-steps", "6",
+        ]), self.assertRaisesRegex(ValueError, "at least one future step"):
+            evaluate.main()
+
+    def test_training_entrypoint_records_stack_and_builds_one_loader(self) -> None:
+        config = deepcopy(self.config)
+        config["output_dir"] = str(self.root / "training")
+        config["dataset"].update(
+            file_patterns=["case_*.npz"], num_workers=0,
+            split={"strategy": "random", "train": 1 / 3, "val": 1 / 3, "test": 1 / 3},
+        )
+        config["training"].update(epochs=1, batch_size=1, train_horizon_min=2, val_every=1)
+        config["training"]["train_horizon_curriculum"]["enabled"] = False
+        config["amp"]["mode"] = "none"
+        override = self.root / "training.yaml"
+        override.write_text(yaml.safe_dump(config))
+        paths = [str(PROJECT_ROOT / "configs/default.yaml"), str(override)]
+        argv = ["train.py", "--run-name", "smoke"]
+        for path in paths:
+            argv.extend(["--config", path])
+        with patch.object(sys, "argv", argv), patch.object(train, "build_loader", wraps=build_loader) as loader:
+            train.main()
+        self.assertEqual(loader.call_count, 1)
+        output = self.root / "training/smoke"
+        self.assertEqual((output / "config_stack.txt").read_text().splitlines(), paths)
+        merged = json.loads((output / "config.json").read_text())
+        saved = torch.load(output / "best.pt", map_location="cpu")
+        self.assertEqual(merged, saved["config"])
+        history = json.loads((output / "history.json").read_text())
+        self.assertEqual(set(history[0]), {"epoch", "train", "val_rollout"})
+        self.assertEqual(saved["metric_name"], "whole_rollout_norm_rmse")
 
     def test_solver_diagnostic_runs_from_checkpoint_and_restores_solver(self) -> None:
         with patch.object(sys, "argv", ["check_solver_convergence.py", "--checkpoint", str(self.checkpoint_path), "--device", "cpu"]):

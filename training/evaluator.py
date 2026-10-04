@@ -1,4 +1,4 @@
-"""Window-based and full-rollout evaluation in normalized and physical units."""
+"""Rollout-to-end evaluation in normalized and physical units."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from training.metrics import add_issm_metrics, issm_speed_error_sums
 
 
 class Evaluator:
-    """Evaluate fixed windows and full trajectories in normalized and physical units."""
+    """Evaluate full trajectories in normalized and physical units."""
 
     def __init__(self, model: torch.nn.Module, normalizer: FeatureNormalizer, device: torch.device, amp_mode: str = "none") -> None:
         self.model = model
@@ -37,69 +37,23 @@ class Evaluator:
         return torch.autocast(device_type="cuda", dtype=dtype)
 
     @torch.no_grad()
-    def evaluate_loader(self, loader) -> dict[str, float]:
-        """Evaluate a fixed-window loader over the full stored horizon."""
-
-        self.model.eval()
-        sample = loader.dataset[0]
-        state_dim = int(sample.y_future.shape[-1])
-        norm_sq_sum = torch.zeros(state_dim, device=self.device, dtype=torch.float64)
-        norm_abs_sum = torch.zeros(state_dim, device=self.device, dtype=torch.float64)
-        phys_sq_sum = torch.zeros(state_dim, device=self.device, dtype=torch.float64)
-        phys_abs_sum = torch.zeros(state_dim, device=self.device, dtype=torch.float64)
-        count = torch.zeros(state_dim, device=self.device, dtype=torch.float64)
-        is_issm = getattr(loader.dataset, "dataset_name", None) == "issm"
-        speed_sums = torch.zeros(2, device=self.device, dtype=torch.float64)
-
-        for batch in loader:
-            batch = batch.to(self.device)
-            with self._autocast():
-                y_pred = self._predict(batch)
-            if not torch.isfinite(y_pred).all():
-                raise FloatingPointError("Non-finite model outputs encountered during window evaluation.")
-            pred_norm = y_pred.float()
-            target_norm = batch.y_future.float()
-            batch_sq, batch_abs, batch_count = channel_error_sums(pred_norm, target_norm)
-            norm_sq_sum += batch_sq.to(dtype=torch.float64)
-            norm_abs_sum += batch_abs.to(dtype=torch.float64)
-            count += batch_count.to(dtype=torch.float64)
-            pred_phys = self.normalizer.inverse_state(pred_norm)
-            target_phys = self.normalizer.inverse_state(target_norm)
-            if is_issm:
-                speed_sums += issm_speed_error_sums(pred_phys, target_phys)
-            batch_sq, batch_abs, _ = channel_error_sums(pred_phys, target_phys)
-            phys_sq_sum += batch_sq.to(dtype=torch.float64)
-            phys_abs_sum += batch_abs.to(dtype=torch.float64)
-
-        self._all_reduce(norm_sq_sum)
-        self._all_reduce(norm_abs_sum)
-        self._all_reduce(phys_sq_sum)
-        self._all_reduce(phys_abs_sum)
-        self._all_reduce(count)
-        metrics = summarize_channel_metrics(phys_sq_sum, phys_abs_sum, count)
-        metrics.update(summarize_channel_metrics(norm_sq_sum, norm_abs_sum, count, prefix="norm_"))
-        if is_issm:
-            self._all_reduce(speed_sums)
-            add_issm_metrics(metrics, speed_sums)
-        return metrics
-
-    @torch.no_grad()
-    def evaluate_full_rollout(self, dataset, start_t: int | None = None) -> dict[str, float | list[float]]:
+    def evaluate_full_rollout(self, dataset, *, known_steps: int) -> dict[str, float | list[float]]:
         """Run whole-trajectory rollout evaluation using known future forcing."""
 
         self.model.eval()
-        rollout_start_t = dataset.history_len - 1 if start_t is None else int(start_t)
+        known_steps = int(known_steps)
+        if not dataset.scenario_infos:
+            raise ValueError("Rollout evaluation requires at least one scenario.")
+        if known_steps < dataset.history_len:
+            raise ValueError(
+                f"known_steps={known_steps} must be >= history_len={dataset.history_len}."
+            )
         min_steps = min(int(info["length"]) for info in dataset.scenario_infos)
-        if rollout_start_t < dataset.history_len - 1:
+        if known_steps >= min_steps:
             raise ValueError(
-                f"Full-rollout start_t={rollout_start_t} must be at least history_len - 1 "
-                f"({dataset.history_len - 1})."
+                f"known_steps={known_steps} must be < trajectory length ({min_steps})."
             )
-        if rollout_start_t >= min_steps - 1:
-            raise ValueError(
-                f"Full-rollout start_t={rollout_start_t} must leave at least one future step; "
-                f"the shortest trajectory has {min_steps} steps."
-            )
+        rollout_start_t = known_steps - 1
 
         reference = dataset.get_rollout_data(0, start_t=rollout_start_t)
         state_dim = int(reference.y_future.shape[-1])
@@ -134,7 +88,7 @@ class Evaluator:
 
             pred_norm = y_pred.float()
             target_norm = sample.y_future.float()
-            batch_sq, batch_abs, batch_count = channel_error_sums(pred_norm, target_norm)
+            batch_sq, batch_abs, batch_count = channel_error_sums(pred_norm.double(), target_norm.double())
             norm_whole_sq += batch_sq.to(dtype=torch.float64)
             norm_whole_abs += batch_abs.to(dtype=torch.float64)
             whole_count += batch_count.to(dtype=torch.float64)
@@ -143,26 +97,26 @@ class Evaluator:
             if is_issm:
                 speed_sums += issm_speed_error_sums(pred_phys, target_phys)
                 final_speed_sums += issm_speed_error_sums(pred_phys[:, -1:], target_phys[:, -1:])
-            batch_sq, batch_abs, batch_count = channel_error_sums(pred_phys, target_phys)
+            batch_sq, batch_abs, batch_count = channel_error_sums(pred_phys.double(), target_phys.double())
             whole_sq += batch_sq.to(dtype=torch.float64)
             whole_abs += batch_abs.to(dtype=torch.float64)
 
             norm_final_pred = pred_norm[:, -1:, :]
             norm_final_target = target_norm[:, -1:, :]
-            batch_sq, batch_abs, batch_count = channel_error_sums(norm_final_pred, norm_final_target)
+            batch_sq, batch_abs, batch_count = channel_error_sums(norm_final_pred.double(), norm_final_target.double())
             norm_final_sq += batch_sq.to(dtype=torch.float64)
             norm_final_abs += batch_abs.to(dtype=torch.float64)
             final_count += batch_count.to(dtype=torch.float64)
             final_pred = pred_phys[:, -1:, :]
             final_target = target_phys[:, -1:, :]
-            batch_sq, batch_abs, batch_count = channel_error_sums(final_pred, final_target)
+            batch_sq, batch_abs, batch_count = channel_error_sums(final_pred.double(), final_target.double())
             final_sq += batch_sq.to(dtype=torch.float64)
             final_abs += batch_abs.to(dtype=torch.float64)
 
-            curve_sq, curve_count = overall_horizon_sums(pred_norm, target_norm)
+            curve_sq, curve_count = overall_horizon_sums(pred_norm.double(), target_norm.double())
             norm_horizon_sq[: curve_sq.shape[0]] += curve_sq.to(dtype=torch.float64)
             horizon_count[: curve_count.shape[0]] += curve_count.to(dtype=torch.float64)
-            curve_sq, _ = overall_horizon_sums(pred_phys, target_phys)
+            curve_sq, _ = overall_horizon_sums(pred_phys.double(), target_phys.double())
             horizon_sq[: curve_sq.shape[0]] += curve_sq.to(dtype=torch.float64)
 
         for tensor in (
@@ -186,6 +140,7 @@ class Evaluator:
         metrics.update(summarize_channel_metrics(norm_whole_sq, norm_whole_abs, whole_count, prefix="whole_rollout_norm_"))
         metrics.update(summarize_channel_metrics(final_sq, final_abs, final_count, prefix="final_step_"))
         metrics.update(summarize_channel_metrics(norm_final_sq, norm_final_abs, final_count, prefix="final_step_norm_"))
+        metrics["horizon_lead_steps"] = list(range(1, max_horizon + 1))
         metrics["horizon_norm_rmse_curve"] = summarize_horizon_curve(norm_horizon_sq, horizon_count)
         metrics["horizon_rmse_curve"] = summarize_horizon_curve(horizon_sq, horizon_count)
         if is_issm:

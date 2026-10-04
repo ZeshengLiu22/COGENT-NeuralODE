@@ -1,23 +1,5 @@
-# Demo override used by run_sweep.py unless a CLI option changes it.
-#
-# The sweep still merges the requested base config first:
-#   configs/ISSM_History_Scan/base_ISSM_history_4.yaml
-# then ISSM dataset settings:
-#   configs/issm.yaml
-# then the default full NODE upgrade-v1 model:
-#   configs/model_node2.yaml
-#
-# This override keeps the demo short and focused on dataloader speed.
+# Short benchmark override after the canonical ISSM stack.
 output_dir: experiments/dataloader_speed_sweep/outputs
-
-dataset:
-  data_dir: ./data/ISSM/PIG_5000
-
 training:
   epochs: 3
   val_every: 1
-
-evaluation:
-  amp_mode: none
-  full_rollout_on_val: true
-  checkpoint_metric: whole_rollout_norm_rmse

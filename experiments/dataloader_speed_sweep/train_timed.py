@@ -92,26 +92,14 @@ class TimedTrainer(Trainer):
                 },
             }
 
-            if self.val_every > 0 and epoch % self.val_every == 0:
-                val_windows = len(self.val_dataset)
-                val_metrics, val_seconds = self._timed(lambda: self.evaluator.evaluate_loader(self.val_loader))
-                epoch_record["val_window"] = val_metrics
-                epoch_record["timing"].update(
-                    {
-                        "val_seconds": val_seconds,
-                        "val_windows": val_windows,
-                        "val_windows_per_sec": val_windows / max(val_seconds, 1.0e-12),
-                    }
-                )
-                if self.full_rollout_on_val:
-                    val_rollout, rollout_seconds = self._timed(
-                        lambda: self.evaluator.evaluate_full_rollout(
-                            self.val_dataset,
-                            start_t=self._full_rollout_start_t(self.val_dataset),
-                        )
+            if epoch % self.val_every == 0 or epoch == self.epochs:
+                val_rollout, rollout_seconds = self._timed(
+                    lambda: self.evaluator.evaluate_full_rollout(
+                        self.val_dataset, known_steps=self.known_steps,
                     )
-                    epoch_record["val_rollout"] = val_rollout
-                    epoch_record["timing"]["val_rollout_seconds"] = rollout_seconds
+                )
+                epoch_record["val_rollout"] = val_rollout
+                epoch_record["timing"]["val_rollout_seconds"] = rollout_seconds
 
             if self.scheduler is not None:
                 self.scheduler.step()
@@ -124,8 +112,8 @@ class TimedTrainer(Trainer):
                     f"train_windows_per_sec={epoch_record['timing']['train_windows_per_sec']:.3f}",
                     f"train_norm_mse={train_metrics['train_norm_mse']:.6f}",
                 ]
-                if "val_seconds" in epoch_record["timing"]:
-                    parts.append(f"val_seconds={epoch_record['timing']['val_seconds']:.3f}")
+                if "val_rollout_seconds" in epoch_record["timing"]:
+                    parts.append(f"val_rollout_seconds={epoch_record['timing']['val_rollout_seconds']:.3f}")
                 rank0_log(self.logger, " | ".join(parts))
                 save_json(self.output_dir / "history.json", history)
 
@@ -141,10 +129,8 @@ class TimedTrainer(Trainer):
         warm_train_times = train_times[warm_slice]
         warm_train_rates = train_rates[warm_slice]
 
-        val_times = [float(row["timing"]["val_seconds"]) for row in history if "val_seconds" in row["timing"]]
         total_epoch_times = [
             float(row["timing"]["train_seconds"])
-            + float(row["timing"].get("val_seconds", 0.0))
             + float(row["timing"].get("val_rollout_seconds", 0.0))
             for row in history
         ]
@@ -155,7 +141,6 @@ class TimedTrainer(Trainer):
             "mean_train_seconds_warm": sum(warm_train_times) / max(len(warm_train_times), 1),
             "mean_train_windows_per_sec_all": sum(train_rates) / max(len(train_rates), 1),
             "mean_train_windows_per_sec_warm": sum(warm_train_rates) / max(len(warm_train_rates), 1),
-            "mean_val_seconds_all": (sum(val_times) / len(val_times)) if val_times else None,
             "mean_val_rollout_seconds_all": (sum(rollout_times) / len(rollout_times)) if rollout_times else None,
             "mean_epoch_seconds_all": sum(total_epoch_times) / max(len(total_epoch_times), 1),
             "history": history,
@@ -177,6 +162,7 @@ def main() -> None:
     logger = configure_logging(output_dir / "train.log" if rank == 0 else None)
     if rank == 0:
         save_json(output_dir / "config.json", config)
+        (output_dir / "config_stack.txt").write_text("".join(f"{path}\n" for path in args.config), encoding="utf-8")
 
     train_files, val_files, test_files = build_splits(config)
     if rank == 0:
@@ -191,12 +177,11 @@ def main() -> None:
         std_floor=float(config["normalization"]["std_floor"]),
     )
     train_dataset.normalizer = normalizer
-    val_dataset = build_dataset(dataset_name, val_files, split="val", config=config, normalizer=normalizer)
-    test_dataset = build_dataset(dataset_name, test_files, split="test", config=config, normalizer=normalizer)
+    val_dataset = build_dataset(dataset_name, val_files, split="val", config=config, normalizer=normalizer, sample_windows=False)
+    test_dataset = build_dataset(dataset_name, test_files, split="test", config=config, normalizer=normalizer, sample_windows=False)
 
     dataset_cfg = config["dataset"]
     num_workers = int(dataset_cfg.get("num_workers", 0))
-    val_num_workers = int(dataset_cfg.get("val_num_workers", num_workers))
     pin_memory = bool(dataset_cfg.get("pin_memory", False))
     prefetch_factor = dataset_cfg.get("prefetch_factor", None)
     persistent_workers = bool(dataset_cfg.get("persistent_workers", False))
@@ -211,33 +196,11 @@ def main() -> None:
         prefetch_factor=prefetch_factor,
         persistent_workers=persistent_workers,
     )
-    eval_batch_size = int(config["evaluation"].get("batch_size", 1))
-    val_loader = build_loader(
-        val_dataset,
-        batch_size=eval_batch_size,
-        num_workers=val_num_workers,
-        distributed=bool(ddp_info["enabled"]),
-        shuffle=False,
-        pin_memory=pin_memory,
-        prefetch_factor=prefetch_factor,
-        persistent_workers=persistent_workers,
-    )
-    test_loader = build_loader(
-        test_dataset,
-        batch_size=eval_batch_size,
-        num_workers=val_num_workers,
-        distributed=bool(ddp_info["enabled"]),
-        shuffle=False,
-        pin_memory=pin_memory,
-        prefetch_factor=prefetch_factor,
-        persistent_workers=persistent_workers,
-    )
-
     if rank == 0:
         rank0_log(
             logger,
             "dataloader_settings="
-            f"num_workers={num_workers}, val_num_workers={val_num_workers}, "
+            f"num_workers={num_workers}, "
             f"pin_memory={pin_memory}, prefetch_factor={prefetch_factor}, "
             f"persistent_workers={persistent_workers}",
         )
@@ -254,8 +217,6 @@ def main() -> None:
     trainer = TimedTrainer(
         model=model,
         train_loader=train_loader,
-        val_loader=val_loader,
-        test_loader=test_loader,
         train_dataset=train_dataset,
         val_dataset=val_dataset,
         test_dataset=test_dataset,

@@ -1,18 +1,20 @@
-# ISSM Dataloader Speed Sweep
+# ISSM dataloader speed sweep
 
-Disposable scripts for timing ISSM NODE2 upgrade-v1 training with different
-PyTorch/PyG dataloader settings. These files are intentionally isolated from
-the main training entrypoint so the experiment folder can be removed later.
+`run_sweep.py` times training-window loader settings with the canonical
+`default → datasets/issm → protocols/issm/main → models/node2 → extra overrides`
+stack. A generated override records the requested benchmark duration, explicit
+data location, and worker settings. The default data is `./data/ISSM/PIG_5000`.
+Validation reads complete trajectories from `evaluation.known_steps` to the end.
+The timing entrypoint omits the final test and records rollout validation time
+separately from training windows per second.
 
-By default the sweep uses only `./data/ISSM/PIG_5000`. It still merges
-`configs/issm.yaml`, but the generated per-combo override replaces the broader
-`PIG_data` path with the PIG-5000 subset.
+```bash
+python experiments/dataloader_speed_sweep/run_sweep.py --max-combos 1 --dry-run
+```
 
-The sweep defaults to formal-like validation (`full_rollout_on_val: true`) and
-does not cap the sampled training horizon unless `--train-horizon-max` is
-provided. Use `--skip-full-rollout-on-val` only for train-loader-only timing.
-
-The main training defaults now enable the shared horizon curriculum. For timing
-comparisons where the cap should be fixed from epoch 1, pass
-`--horizon-curriculum off` to `run_sweep.py`; pass `--horizon-curriculum on` to
-force the curriculum on when an override config disabled it.
+Use `--train-horizon-max` only for an explicitly capped timing run. Use
+`--horizon-curriculum off` for a fixed target maximum from epoch one.
+Every timed run saves its merged `config.json` and ordered `config_stack.txt`.
+The measured worker settings are maintained in `configs/runtime/fast.yaml`;
+that file contains only runtime options. Benchmark results are not formal model
+selection results. See the [handbook](../../handbook.md) for formal experiments.

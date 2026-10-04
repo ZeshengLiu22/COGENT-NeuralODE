@@ -1,9 +1,0 @@
-dataset:
-  name: adcirc
-  data_dir: ./data/adcirc
-  file_patterns:
-    - "*.npz"
-    - "*.pt"
-    - "*.pth"
-    - "*.mat"
-  adcirc: {}

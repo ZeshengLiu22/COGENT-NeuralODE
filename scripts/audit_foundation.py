@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Read-only, CPU audit of repaired inputs and formal ablation window counts.
+"""Read-only CPU audit of inputs, rollout semantics, and training-window counts.
 
 Example:
     python scripts/audit_foundation.py --data-root /path/to/data \
@@ -36,10 +36,68 @@ from utils import load_config_bundle
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
-def _config(relative_path: str, data_dir: Path, overlays: tuple[str, ...] = ()) -> dict:
-    config = load_config_bundle([PROJECT_ROOT / relative_path] + [PROJECT_ROOT / overlay for overlay in overlays])
+def _config_stack(name: str, overlays: tuple[str, ...] = ()) -> list[str]:
+    return [
+        "configs/default.yaml",
+        f"configs/datasets/{name}.yaml",
+        f"configs/protocols/{name}/main.yaml",
+        "configs/models/node2.yaml",
+        *overlays,
+        "configs/runtime/fast.yaml",
+    ]
+
+
+def _config(name: str, data_dir: Path, overlays: tuple[str, ...] = ()) -> dict:
+    config = load_config_bundle([PROJECT_ROOT / path for path in _config_stack(name, overlays)])
     config["dataset"]["data_dir"] = str(data_dir)
     return config
+
+
+def validate_temporal_settings(config: dict, lengths: dict[str, int]) -> dict:
+    """Validate training horizon availability and rollout starts separately."""
+
+    history = int(config["dataset"]["history_len"])
+    future = int(config["dataset"]["future_len"])
+    known = int(config["evaluation"]["known_steps"])
+    training = config["training"]
+    minimum = int(training.get("train_horizon_min", 1))
+    maximum = training.get("train_horizon_max")
+    if history < 1 or future < 1:
+        raise ValueError("history_len and future_len must be >= 1.")
+    if known < history:
+        raise ValueError("evaluation.known_steps must be >= dataset.history_len.")
+    if not lengths:
+        raise ValueError("Temporal audit requires at least one trajectory.")
+    for scenario, length in lengths.items():
+        if known >= length:
+            raise ValueError(f"evaluation.known_steps must be < trajectory length: {scenario} has {length} steps.")
+    if minimum < 1 or future < minimum:
+        raise ValueError("dataset.future_len must be >= training.train_horizon_min >= 1.")
+    if maximum is not None and not minimum <= int(maximum) <= future:
+        raise ValueError("training.train_horizon_max must be between train_horizon_min and dataset.future_len.")
+    return {
+        "history_len": history,
+        "future_len": future,
+        "known_steps": known,
+        "history_indices": list(range(known - history, known)),
+        "rollout_lengths": sorted({length - known for length in lengths.values()}),
+        "train_horizon_min": minimum,
+        "target_train_horizon_max": future if maximum is None else int(maximum),
+        "relative_time_scale": config["model"]["relative_time_scale"],
+        "passed": True,
+    }
+
+
+def validate_main_protocol(config: dict, name: str) -> None:
+    expected = {"issm": (1, 180, 60, 180.0), "anuga": (1, 64, 8, 65.0)}[name]
+    actual = (config["dataset"]["history_len"], config["dataset"]["future_len"],
+              config["evaluation"]["known_steps"], config["model"]["relative_time_scale"])
+    if actual != expected:
+        raise ValueError(f"{name} main protocol must resolve to H/K/known/scale={expected}, got {actual}.")
+    if config["dataset"]["name"] != name:
+        raise ValueError(f"Expected dataset identity {name}.")
+    if name == "issm" and Path(config["dataset"]["data_dir"]).name != "PIG_5000":
+        raise ValueError("The standard ISSM dataset must be PIG_5000.")
 
 
 def _splits(config: dict) -> dict[str, list[Path]]:
@@ -53,6 +111,8 @@ def _stats(values: np.ndarray) -> dict:
 
 
 def _audit_issm(config: dict) -> tuple[dict, dict[str, int]]:
+    validate_main_protocol(config, "issm")
+    known_steps = int(config["evaluation"]["known_steps"])
     splits = _splits(config)
     files = sorted(path for paths in splits.values() for path in paths)
     membership = {path: split for split, paths in splits.items() for path in paths}
@@ -64,11 +124,12 @@ def _audit_issm(config: dict) -> tuple[dict, dict[str, int]]:
         fields = payload["S"][0][0]
         thickness = np.asarray(fields[9], dtype=np.float32)
         lengths[path.name] = len(thickness)
+        validate_temporal_settings(config, {path.name: len(thickness)})
         metadata.append({"file": path.name, "split": membership[path], "snapshots": int(thickness.shape[0]),
                          "nodes": int(thickness.shape[1]), "melt_rate": parse_issm_rate_from_filename(path)})
         if membership[path] in {"val", "test"}:
             floating = np.asarray(fields[10], dtype=np.float32)
-            anchor = 59
+            anchor = known_steps - 1
             reconstruction = thickness[anchor] + floating[anchor + 1:] - floating[anchor]
             error = reconstruction.astype(np.float64) - thickness[anchor + 1:].astype(np.float64)
             leakage.append({"file": path.name, "split": membership[path], "t_end": anchor,
@@ -79,9 +140,11 @@ def _audit_issm(config: dict) -> tuple[dict, dict[str, int]]:
         print(f"ISSM metadata {index + 1}/{len(files)}: {path.name}", flush=True)
 
     sample_path = splits["train"][0]
-    dataset = ISSMDataset([sample_path], history_len=6, future_len=8, split="train", cache_in_memory=True)
+    dataset = ISSMDataset([sample_path], history_len=config["dataset"]["history_len"],
+                          future_len=config["dataset"]["future_len"], split="train", cache_in_memory=True,
+                          adapter_kwargs=config["dataset"].get("issm", {}))
     trajectory = dataset.iter_trajectories()[0]
-    sample = dataset.get_rollout_data(0, start_t=59)
+    sample = dataset.get_rollout_data(0, start_t=known_steps - 1)
     result = {
         "data_dir": config["dataset"]["data_dir"],
         "split_rates": {split: sorted({parse_issm_rate_from_filename(path) for path in paths}) for split, paths in splits.items()},
@@ -103,16 +166,15 @@ def _audit_issm(config: dict) -> tuple[dict, dict[str, int]]:
         "future_floating_available_to_model": False,
         "coordinates_predictive_channels": False,
         "edge_attr_consumed_by_node2": False,
-        "raw_analytic_leakage_formula": "H[59] + floating[60:] - floating[59] (arithmetic in float32)",
+        "raw_analytic_leakage_formula": f"H[{known_steps - 1}] + floating[{known_steps}:] - floating[{known_steps - 1}] (arithmetic in float32)",
         "raw_analytic_leakage": leakage,
-        "full_rollout_known_steps": 60,
-        "full_rollout_future_steps": sorted({length - 60 for length in lengths.values()}),
-        "relative_time_scale": config["model"]["relative_time_scale"],
+        "temporal_semantics": validate_temporal_settings(config, lengths),
     }
     return result, lengths
 
 
 def _audit_anuga(config: dict) -> tuple[dict, dict[str, int]]:
+    validate_main_protocol(config, "anuga")
     splits = _splits(config)
     membership = {path: split for split, paths in splits.items() for path in paths}
     metadata = []
@@ -162,32 +224,29 @@ def _audit_anuga(config: dict) -> tuple[dict, dict[str, int]]:
         "normalizer_force_std": normalizer.force_std.tolist(),
         "normalized_training_rainfall": {"mean": normalized.mean.item(), "std": normalized_std.item()},
         "normalizer_scope": "Force statistics fitted with FeatureNormalizer; dummy static/state arrays unused",
-        "full_rollout_known_steps": 8,
-        "full_rollout_future_steps": sorted({length - 8 for length in lengths.values()}),
-        "relative_time_scale": config["model"]["relative_time_scale"],
+        "temporal_semantics": validate_temporal_settings(config, lengths),
     }
     print(f"ANUGA train rainfall: raw mean/std={raw.mean.item():.9g}/{raw_std.item():.9g}; "
           f"normalized mean/std={normalized.mean.item():.9g}/{normalized_std.item():.9g}", flush=True)
     return result, lengths
 
 
-def _scan_table(directory: str, data_dir: Path, lengths: dict[str, int], overlays: tuple[str, ...] = ()) -> dict:
+def _scan_table(name: str, axis: str, data_dir: Path, lengths: dict[str, int]) -> dict:
     rows = []
-    expected_anchors = None
-    for path in sorted((PROJECT_ROOT / "configs" / directory).glob("base_*.yaml")):
-        config = _config(str(path.relative_to(PROJECT_ROOT)), data_dir, overlays)
+    for path in sorted((PROJECT_ROOT / "configs/ablations" / axis).glob("*.yaml")):
+        overlays = (str(path.relative_to(PROJECT_ROOT)),)
+        config = _config(name, data_dir, overlays)
         dataset_cfg = config["dataset"]
+        if name == "issm" and axis == "future_len" and dataset_cfg["future_len"] not in (30, 45, 60, 75, 90, 120, 150, 180):
+            continue
+        semantics = validate_temporal_settings(config, lengths)
         train_files = _splits(config)["train"]
         per_scenario = {}
         for scenario_path in train_files:
             per_scenario[scenario_path.name] = enumerate_window_end_indices(
                 lengths[scenario_path.name], dataset_cfg["history_len"], dataset_cfg["future_len"],
-                dataset_cfg.get("stride", 1), dataset_cfg.get("window_reference"),
+                dataset_cfg.get("stride", 1),
             )
-        if expected_anchors is None:
-            expected_anchors = per_scenario
-        if expected_anchors != per_scenario:
-            raise AssertionError(f"Prediction anchors differ within {directory}: {path.name}")
         window_counts = sorted({len(anchors) for anchors in per_scenario.values()})
         first_anchors = sorted({anchors[0] for anchors in per_scenario.values() if anchors})
         last_anchors = sorted({anchors[-1] for anchors in per_scenario.values() if anchors})
@@ -196,15 +255,17 @@ def _scan_table(directory: str, data_dir: Path, lengths: dict[str, int], overlay
         accumulation = int(config["training"].get("grad_accum_steps", 1))
         steps = lambda world_size: math.ceil(math.ceil(math.ceil(total_windows / world_size) / batch_size) / accumulation)
         rows.append({"config": str(path.relative_to(PROJECT_ROOT)), "history_len": dataset_cfg["history_len"],
-                     "future_len": dataset_cfg["future_len"], "windows_per_scenario": window_counts,
+                     "future_len": dataset_cfg["future_len"], "known_steps": semantics["known_steps"],
+                     "rollout_lengths": semantics["rollout_lengths"], "windows_per_scenario": window_counts,
                      "first_t_end": first_anchors, "last_t_end": last_anchors,
                      "training_scenarios": len(train_files), "total_training_windows": total_windows,
                      "per_rank_batch_size": batch_size, "grad_accum_steps": accumulation,
                      "optimizer_steps_per_epoch_single_process": steps(1),
                      "optimizer_steps_per_epoch_world_sizes": {str(world): steps(world) for world in [1, 2, 4, 8]}})
     rows.sort(key=lambda row: (row["history_len"], row["future_len"]))
-    return {"identical_prediction_anchors": True,
-            "config_overlays_in_order": list(overlays), "data_dir": str(data_dir),
+    return {"training_anchor_rule": "range(history_len - 1, trajectory_length - future_len, stride)",
+            "config_stack_template": _config_stack(name, (f"configs/ablations/{axis}/<variant>.yaml",)),
+            "data_dir": str(data_dir),
             "sbatch_default_world_size": 4,
             "optimizer_steps_formula": "ceil(ceil(ceil(total_training_windows / world_size) / per_rank_batch_size) / grad_accum_steps)",
             "training_sampler_note": "Distributed training retains PyTorch padding; evaluation never pads.", "variants": rows}
@@ -216,30 +277,22 @@ def main() -> None:
     parser.add_argument("--output", type=Path, default=PROJECT_ROOT / "docs/foundation_audit.json")
     args = parser.parse_args()
     torch.set_num_threads(1)
-    issm_dir = args.data_root / "ISSM/PIG_data"
-    issm_formal_dir = args.data_root / "ISSM/PIG_5000"
+    issm_dir = args.data_root / "ISSM/PIG_5000"
     anuga_dir = args.data_root / "ANUGA/simulation_data_merged"
-    issm_config_path = "configs/ISSM_History_Scan/base_ISSM_history_8.yaml"
-    anuga_config_path = "configs/ANUGA_History_Scan/base_ANUGA_history8.yaml"
-    issm_overlays = ("configs/model_node2.yaml", "configs/ISSM_History_Scan/issm_pig5000_fast_loader.yaml")
-    anuga_overlays = ("configs/model_node2.yaml", "configs/ANUGA_History_Scan/anuga_fast_loader.yaml")
-    issm, issm_lengths = _audit_issm(_config(issm_config_path, issm_dir))
-    issm_formal, issm_formal_lengths = _audit_issm(_config(issm_config_path, issm_formal_dir, issm_overlays))
-    anuga, anuga_lengths = _audit_anuga(_config(anuga_config_path, anuga_dir, anuga_overlays))
+    issm, issm_lengths = _audit_issm(_config("issm", issm_dir))
+    anuga, anuga_lengths = _audit_anuga(_config("anuga", anuga_dir))
     result = {
         "generated_utc": datetime.now(timezone.utc).isoformat(),
         "command": f"python scripts/audit_foundation.py --data-root {args.data_root} --output {args.output}",
         "scope": "Read-only real-data audit; CPU; no optimization/training or accuracy claim",
-        "formal_config_sources": {"issm": [issm_config_path, *issm_overlays],
-                                  "anuga": [anuga_config_path, *anuga_overlays]},
+        "formal_config_sources": {name: _config_stack(name) for name in ("issm", "anuga")},
         "dataset_relocation_note": "Preserve formal subdirectory choices while relocating their data root via --data-root.",
         "issm": issm,
-        "issm_formal_pig5000": issm_formal,
         "anuga": anuga,
         "scans": {
-            "anuga_history": _scan_table("ANUGA_History_Scan", anuga_dir, anuga_lengths, anuga_overlays),
-            "issm_history": _scan_table("ISSM_History_Scan", issm_formal_dir, issm_formal_lengths, issm_overlays),
-            "issm_future": _scan_table("ISSM_Future_Len_Ablation", issm_formal_dir, issm_formal_lengths, issm_overlays),
+            "anuga_history": _scan_table("anuga", "history", anuga_dir, anuga_lengths),
+            "issm_history": _scan_table("issm", "history", issm_dir, issm_lengths),
+            "issm_future": _scan_table("issm", "future_len", issm_dir, issm_lengths),
         },
         "relative_time_prefix": "Separate model regression/audit; this script does not run model inference.",
     }

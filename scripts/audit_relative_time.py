@@ -21,11 +21,12 @@ from utils.io import load_config_bundle, save_json
 
 def audit_dataset(name: str, data_root: Path, seed: int) -> dict:
     config = load_config_bundle([
-        PROJECT_ROOT / "configs/base_sample.yaml",
-        PROJECT_ROOT / f"configs/{name}.yaml",
-        PROJECT_ROOT / "configs/model_node2.yaml",
+        PROJECT_ROOT / "configs/default.yaml",
+        PROJECT_ROOT / f"configs/datasets/{name}.yaml",
+        PROJECT_ROOT / f"configs/protocols/{name}/main.yaml",
+        PROJECT_ROOT / "configs/models/node2.yaml",
     ])
-    subdirectory = "ISSM/PIG_data" if name == "issm" else "ANUGA/simulation_data_merged"
+    subdirectory = "ISSM/PIG_5000" if name == "issm" else "ANUGA/simulation_data_merged"
     config["dataset"].update({
         "data_dir": str(data_root / subdirectory), "cache_in_memory": True, "future_len": 8,
     })

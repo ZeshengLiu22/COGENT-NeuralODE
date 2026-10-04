@@ -13,10 +13,7 @@ from datasets.split_utils import resolve_split_manifest
 
 _RUNTIME_PATHS = {
     ("dataset", "data_dir"),
-    ("dataset", "history_len"),
-    ("dataset", "future_len"),
-    ("evaluation", "batch_size"),
-    ("evaluation", "num_workers"),
+    ("evaluation", "known_steps"),
     ("evaluation", "amp_mode"),
     ("output_dir",),
     ("device",),
@@ -52,10 +49,10 @@ def restore_evaluation_config(checkpoint: dict, external_config: dict | None = N
     for name in ("history_len", "future_len"):
         if int(config["dataset"][name]) < 1:
             raise ValueError(f"Evaluation {name} must be >= 1.")
-    if int(config["evaluation"].get("batch_size", 1)) < 1:
-        raise ValueError("Evaluation batch_size must be >= 1.")
-    if int(config["evaluation"].get("num_workers", 0)) < 0:
-        raise ValueError("Evaluation num_workers must be >= 0.")
+    if "known_steps" not in config["evaluation"]:
+        raise ValueError("evaluation.known_steps is required in the checkpoint or evaluation override.")
+    if int(config["evaluation"]["known_steps"]) < int(config["dataset"]["history_len"]):
+        raise ValueError("evaluation.known_steps must be >= checkpoint dataset.history_len.")
     if config["evaluation"]["amp_mode"] not in ("none", "bf16", "fp16"):
         raise ValueError("Evaluation amp_mode must be none, bf16, or fp16.")
     return config

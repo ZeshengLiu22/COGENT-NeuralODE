@@ -2,6 +2,10 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/../scripts/sweep_config.sh"
+require_history
+require_architecture
+export HISTORY_LEN ENCODER RESIDUAL ODE_CONTEXT RELATIVE_TIME
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 cd "${PROJECT_ROOT}"
 
@@ -12,7 +16,8 @@ else
 fi
 
 for future_len in "${future_lens[@]}"; do
-  script="${SCRIPT_DIR}/train_issm_node2_h6_future${future_len}_u11.sh"
+  FUTURE_LEN="$future_len" require_future
+  script="${SCRIPT_DIR}/train_issm_node2_future${future_len}.sh"
   if [[ ! -f "${script}" ]]; then
     echo "Unknown future length or missing script: ${future_len}" >&2
     exit 1

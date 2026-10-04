@@ -111,7 +111,6 @@ class BaseTemporalGraphDataset(Dataset):
         windows_per_scenario: int | None = None,
         seed: int = 42,
         adapter_kwargs: Optional[dict[str, Any]] = None,
-        window_reference: dict[str, int] | None = None,
     ) -> None:
         super().__init__()
         self.scenario_files = [Path(path) for path in scenario_files]
@@ -125,7 +124,6 @@ class BaseTemporalGraphDataset(Dataset):
         self.windows_per_scenario = windows_per_scenario
         self.seed = int(seed)
         self.adapter_kwargs = adapter_kwargs or {}
-        self.window_reference = window_reference
 
         self._trajectory_cache: dict[int, TrajectoryData] = {}
         self.scenario_infos: list[dict[str, Any]] = []
@@ -153,7 +151,6 @@ class BaseTemporalGraphDataset(Dataset):
                     history_len=self.history_len,
                     future_len=self.future_len,
                     stride=self.stride,
-                    window_reference=self.window_reference,
                 )
             )
 
@@ -239,16 +236,21 @@ class BaseTemporalGraphDataset(Dataset):
         return [self._get_trajectory(index, cache=self.cache_in_memory) for index in range(len(self.scenario_files))]
 
     def get_rollout_data(self, scenario_index: int, start_t: int | None = None) -> Data:
-        """Build a full-rollout sample using the first ``history_len`` steps as context."""
+        """Use H true states ending at ``start_t``, then predict to trajectory end.
+
+        The formal rollout start is ``known_steps = start_t + 1``. Its history
+        is ``[known_steps - H, known_steps)`` and its future is
+        ``[known_steps, T)``; training ``future_len`` does not limit the future.
+        """
 
         trajectory = self._get_trajectory(scenario_index, cache=self.cache_in_memory)
         total_steps = trajectory.times.shape[0]
         if start_t is None:
             start_t = self.history_len - 1
         if start_t < self.history_len - 1:
-            raise ValueError("start_t must be at least history_len - 1.")
+            raise ValueError("known_steps (start_t + 1) must be >= history_len.")
         if start_t >= total_steps - 1:
-            raise ValueError("start_t must leave at least one future step.")
+            raise ValueError("known_steps (start_t + 1) must be < trajectory length.")
 
         dynamic_future_len = total_steps - start_t - 1
         hist_slice = slice(start_t - self.history_len + 1, start_t + 1)
@@ -278,6 +280,8 @@ class BaseTemporalGraphDataset(Dataset):
         data.num_nodes = int(x_static.shape[0])
         data.t_hist = _normalized_relative_times(trajectory.times, start_t, hist_slice)
         data.t_future = _normalized_relative_times(trajectory.times, start_t, future_slice)
+        data.history_idx = torch.arange(start_t - self.history_len + 1, start_t + 1, dtype=torch.long).unsqueeze(0)
+        data.history_time = torch.as_tensor(trajectory.times[hist_slice], dtype=torch.float32).unsqueeze(0)
         data.future_idx = torch.arange(start_t + 1, total_steps, dtype=torch.long).unsqueeze(0)
         data.future_time = torch.as_tensor(trajectory.times[future_slice], dtype=torch.float32).unsqueeze(0)
         data.scenario_id = torch.tensor([self.scenario_id_to_code[trajectory.scenario_id]], dtype=torch.long)

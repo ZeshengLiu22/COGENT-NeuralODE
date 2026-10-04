@@ -492,11 +492,11 @@ class TemporalConfigTest(unittest.TestCase):
             "tc0_off.yaml", "tc1_adjacent_increment.yaml", "tc2_random_pair_increment.yaml",
             "tc3_multiscale_rate.yaml", "tc4_rate_curvature.yaml", "tc5_hybrid.yaml",
         )
-        overlay_dir = root / "configs" / "TemporalConsistency"
+        overlay_dir = root / "configs" / "ablations" / "temporal_consistency"
         self.assertEqual({path.name for path in overlay_dir.glob("*.yaml")}, set(names))
         for name, mode in zip(names, ("none", *MODES)):
             with self.subTest(name=name):
-                merged = load_config_bundle([root / "configs" / "base_sample.yaml", overlay_dir / name])
+                merged = load_config_bundle([root / "configs" / "default.yaml", overlay_dir / name])
                 tc_cfg = merged["training"]["temporal_consistency"]
                 validate_temporal_consistency_config(tc_cfg)
                 self.assertEqual(tc_cfg["mode"], mode)

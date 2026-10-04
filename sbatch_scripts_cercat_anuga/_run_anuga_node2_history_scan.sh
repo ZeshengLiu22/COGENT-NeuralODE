@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [[ ! "${HISTORY_LEN:-}" =~ ^[1-8]$ ]]; then
-  echo "HISTORY_LEN must be set to an integer from 1 to 8, got: ${HISTORY_LEN:-<unset>}" >&2
-  exit 1
-fi
 
+THIS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="${PROJECT_ROOT:-/scratch/09575/zeshengliu/COGENT-NeuralODE}"
 PYTHON_BIN="${PYTHON_BIN:-/work2/09575/zeshengliu/conda_envs/torchpyg-cu128-cge/bin/python}"
+
+source "${THIS_DIR}/../scripts/sweep_config.sh"
+configure_sweep anuga history
 
 cd "${PROJECT_ROOT}"
 mkdir -p logs outputs
@@ -19,14 +19,13 @@ if [[ ! "${NPROC}" =~ ^[1-9][0-9]*$ ]]; then
 fi
 
 RUN_STAMP="${RUN_STAMP:-$(date -u +%Y%m%d_%H%M%S)}"
-RUN_VARIANT="${RUN_VARIANT:-full_upgrade1_1}"
-RUN_NAME="${RUN_NAME:-cercat_anuga_node2_history${HISTORY_LEN}_${RUN_VARIANT}_${RUN_STAMP}}"
+RUN_NAME="${RUN_NAME:-anuga_node2_history_${SWEEP_LABEL}_${RUN_STAMP}}"
 LOG_FILE="${LOG_FILE:-${PROJECT_ROOT}/logs/${RUN_NAME}.log}"
 
-BASE_CONFIG="${BASE_CONFIG:-configs/ANUGA_History_Scan/base_ANUGA_history${HISTORY_LEN}.yaml}"
-DATASET_CONFIG="${DATASET_CONFIG-configs/anuga.yaml}"
-MODEL_CONFIG="${MODEL_CONFIG:-configs/model_node2.yaml}"
-LOADER_CONFIG="${LOADER_CONFIG-configs/ANUGA_History_Scan/anuga_fast_loader.yaml}"
+DATASET_CONFIG="${DATASET_CONFIG:-configs/datasets/anuga.yaml}"
+PROTOCOL_CONFIG="${PROTOCOL_CONFIG:-configs/protocols/anuga/main.yaml}"
+MODEL_CONFIG="${MODEL_CONFIG:-configs/models/node2.yaml}"
+RUNTIME_CONFIG="${RUNTIME_CONFIG-configs/runtime/fast.yaml}"
 EXTRA_CONFIGS="${EXTRA_CONFIGS:-}"
 TRAIN_ARGS="${TRAIN_ARGS:-}"
 
@@ -55,10 +54,9 @@ export TORCH_DISTRIBUTED_DEBUG="${TORCH_DISTRIBUTED_DEBUG:-OFF}"
   echo "[$(date -u +%F' '%T)] nproc=${NPROC}"
   echo "[$(date -u +%F' '%T)] master_addr=${MASTER_ADDR}"
   echo "[$(date -u +%F' '%T)] master_port=${MASTER_PORT}"
-  echo "[$(date -u +%F' '%T)] base_config=${BASE_CONFIG}"
   echo "[$(date -u +%F' '%T)] dataset_config=${DATASET_CONFIG}"
   echo "[$(date -u +%F' '%T)] model_config=${MODEL_CONFIG}"
-  echo "[$(date -u +%F' '%T)] loader_config=${LOADER_CONFIG:-<none>}"
+  echo "[$(date -u +%F' '%T)] runtime_config=${RUNTIME_CONFIG:-<none>}"
   echo "[$(date -u +%F' '%T)] extra_configs=${EXTRA_CONFIGS:-<none>}"
   echo "[$(date -u +%F' '%T)] train_args=${TRAIN_ARGS:-<none>}"
   echo "[$(date -u +%F' '%T)] log_file=${LOG_FILE}"
@@ -72,18 +70,20 @@ train_cmd=(
   --master_addr="${MASTER_ADDR}"
   --master_port="${MASTER_PORT}"
   scripts/train.py
-  --config "${BASE_CONFIG}"
+  --config configs/default.yaml
+  --config "${DATASET_CONFIG}"
+  --config "${PROTOCOL_CONFIG}"
+  --config "${MODEL_CONFIG}"
 )
-if [[ -n "${DATASET_CONFIG}" ]]; then
-  train_cmd+=(--config "${DATASET_CONFIG}")
-fi
-train_cmd+=(--config "${MODEL_CONFIG}")
-if [[ -n "${LOADER_CONFIG}" ]]; then
-  train_cmd+=(--config "${LOADER_CONFIG}")
-fi
+for sweep_config in "${SWEEP_CONFIGS[@]}"; do
+  train_cmd+=(--config "${sweep_config}")
+done
 for extra_config in ${EXTRA_CONFIGS}; do
   train_cmd+=(--config "${extra_config}")
 done
+if [[ -n "${RUNTIME_CONFIG}" ]]; then
+  train_cmd+=(--config "${RUNTIME_CONFIG}")
+fi
 train_cmd+=(--run-name "${RUN_NAME}")
 for train_arg in ${TRAIN_ARGS}; do
   train_cmd+=("${train_arg}")

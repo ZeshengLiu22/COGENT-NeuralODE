@@ -1,0 +1,15 @@
+dataset:
+  name: adcirc
+  data_dir: ./data/adcirc
+  file_patterns:
+  - '*.npz'
+  - '*.pt'
+  - '*.pth'
+  - '*.mat'
+  adcirc: {}
+  split:
+    strategy: random
+    train: 0.6
+    val: 0.2
+    test: 0.2
+    seed: 42

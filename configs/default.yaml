@@ -1,0 +1,48 @@
+# Shared defaults. Choose a dataset, protocol, and model explicitly.
+seed: 42
+deterministic: false
+output_dir: outputs
+dataset:
+  stride: 1
+  num_workers: 0
+  cache_in_memory: false
+  pin_memory: false
+  prefetch_factor: 2
+  persistent_workers: false
+  sampled_windows:
+    windows_per_scenario: null
+    epoch_num_windows: null
+normalization:
+  std_floor: 1.0e-05
+training:
+  epochs: 300
+  lr: 0.001
+  weight_decay: 1.0e-05
+  scheduler: cosine
+  min_lr: 0.0
+  grad_accum_steps: 1
+  max_grad_norm: 1.0
+  grad_clip_norm_dtype: fp32
+  train_horizon_mode: biased_long_horizon
+  train_horizon_max: null
+  train_horizon_curriculum:
+    enabled: true
+    epochs: 120
+    warmup_fractions:
+    - 0.4
+    - 0.55
+    - 0.7
+    - 0.85
+  val_every: 1
+  temporal_consistency:
+    enabled: false
+    mode: none
+    weight: 1.0
+evaluation:
+  amp_mode: none
+  checkpoint_metric: whole_rollout_norm_rmse
+distributed:
+  backend: nccl
+  find_unused_parameters: false
+amp:
+  mode: bf16

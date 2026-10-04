@@ -45,7 +45,7 @@ def check_rank(rank, root_name):
                             rank=rank, world_size=2, timeout=timedelta(seconds=45))
     try:
         model = torch.nn.parallel.DistributedDataParallel(Model())
-        datasets = [SimpleNamespace(scenario_files=[root / f'{split}.npz'], future_len=4)
+        datasets = [SimpleNamespace(scenario_files=[root / f'{split}.npz'], future_len=4, history_len=1, scenario_infos=[{"length": 5}])
                     for split in ('train', 'val', 'test')]
         t = torch.arange(1., 5.).view(1, -1)
         batch = Batch.from_data_list([
@@ -61,9 +61,9 @@ def check_rank(rank, root_name):
                 'training': {'epochs': 1, 'lr': 0.0, 'train_horizon_mode': 'uniform_random',
                              'train_horizon_min': 4, 'train_horizon_curriculum': {'enabled': False},
                              'temporal_consistency': {'enabled': enabled, 'mode': 'random_pair_increment'}},
-                'evaluation': {}, 'amp': {'mode': 'none'},
+                'evaluation': {'known_steps': 1}, 'amp': {'mode': 'none'},
             }
-            trainers.append(Trainer(model, [batch.clone()], [], [], *datasets, Normalizer(), config,
+            trainers.append(Trainer(model, [batch.clone()], *datasets, Normalizer(), config,
                                     torch.device('cpu'), root / f'rank{rank}', logging.getLogger('ddp')))
         initial_rng = torch.random.get_rng_state().clone()
         baseline = trainers[0].train_epoch(1)

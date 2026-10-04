@@ -100,8 +100,6 @@ class Trainer:
         self,
         model: nn.Module,
         train_loader,
-        val_loader,
-        test_loader,
         train_dataset,
         val_dataset,
         test_dataset,
@@ -113,8 +111,6 @@ class Trainer:
     ) -> None:
         self.model = model
         self.train_loader = train_loader
-        self.val_loader = val_loader
-        self.test_loader = test_loader
         self.train_dataset = train_dataset
         self.val_dataset = val_dataset
         self.test_dataset = test_dataset
@@ -149,9 +145,15 @@ class Trainer:
             self.tc_generator = torch.Generator(device=self.device)
             self.tc_generator.manual_seed(int(config.get("seed", 42)) + get_rank())
         self.val_every = int(training_cfg.get("val_every", 1))
+        if self.epochs < 1 or self.val_every < 1:
+            raise ValueError("training.epochs and training.val_every must be >= 1")
         evaluation_cfg = config["evaluation"]
-        self.full_rollout_on_val = bool(evaluation_cfg.get("full_rollout_on_val", True))
-        self.full_rollout_known_steps = evaluation_cfg.get("full_rollout_known_steps", None)
+        self.known_steps = int(evaluation_cfg["known_steps"])
+        for dataset in (val_dataset, test_dataset):
+            if self.known_steps < dataset.history_len:
+                raise ValueError("evaluation.known_steps must be >= dataset.history_len")
+            if any(self.known_steps >= int(info["length"]) for info in dataset.scenario_infos):
+                raise ValueError("evaluation.known_steps must be < every trajectory length")
         self.checkpoint_metric = str(evaluation_cfg.get("checkpoint_metric", "whole_rollout_norm_rmse"))
         self.checkpoint_metric_scale = self._metric_scale(self.checkpoint_metric)
         self.output_dir.mkdir(parents=True, exist_ok=True)
@@ -210,18 +212,12 @@ class Trainer:
             train_metrics = self.train_epoch(epoch)
             epoch_record: dict[str, Any] = {"epoch": epoch, "train": train_metrics}
 
-            if epoch % self.val_every == 0:
-                val_metrics = self.evaluator.evaluate_loader(self.val_loader)
-                epoch_record["val_window"] = val_metrics
-                if self.full_rollout_on_val:
-                    val_rollout = self.evaluator.evaluate_full_rollout(
-                        self.val_dataset,
-                        start_t=self._full_rollout_start_t(self.val_dataset),
-                    )
-                    epoch_record["val_rollout"] = val_rollout
-                    metric_value = float(val_rollout[self.checkpoint_metric])
-                else:
-                    metric_value = float(val_metrics[self.checkpoint_metric])
+            if epoch % self.val_every == 0 or epoch == self.epochs:
+                val_rollout = self.evaluator.evaluate_full_rollout(
+                    self.val_dataset, known_steps=self.known_steps,
+                )
+                epoch_record["val_rollout"] = val_rollout
+                metric_value = float(val_rollout[self.checkpoint_metric])
 
                 if metric_value < self.best_metric:
                     self.best_metric = metric_value
@@ -239,18 +235,16 @@ class Trainer:
         if torch.distributed.is_available() and torch.distributed.is_initialized():
             torch.distributed.barrier()
         self._load_best_checkpoint()
-        test_window = self.evaluator.evaluate_loader(self.test_loader)
         test_rollout = self.evaluator.evaluate_full_rollout(
             self.test_dataset,
-            start_t=self._full_rollout_start_t(self.test_dataset),
+            known_steps=self.known_steps,
         )
         summary = {
             "best_epoch": self.best_epoch,
             "best_metric_name": self.checkpoint_metric,
             "best_metric_scale": self.checkpoint_metric_scale,
             "best_metric": self.best_metric,
-            "full_rollout_known_steps": self.full_rollout_known_steps,
-            "test_window": test_window,
+            "known_steps": self.known_steps,
             "test_rollout": test_rollout,
         }
         if get_rank() == 0:
@@ -466,11 +460,6 @@ class Trainer:
                 )
             )
 
-        val_window = epoch_record.get("val_window")
-        if val_window is not None:
-            parts.append(f"val_window_norm_rmse={val_window['norm_rmse']:.6f}")
-            parts.append(f"val_window_phys_rmse={val_window['rmse']:.6f}")
-
         val_rollout = epoch_record.get("val_rollout")
         if val_rollout is not None:
             parts.append(f"val_rollout_norm_rmse={val_rollout['whole_rollout_norm_rmse']:.6f}")
@@ -484,17 +473,6 @@ class Trainer:
         if metric_name.startswith("norm_") or "_norm_" in metric_name:
             return "normalized"
         return "physical"
-
-    def _full_rollout_start_t(self, dataset) -> int | None:
-        if self.full_rollout_known_steps is None:
-            return None
-        known_steps = int(self.full_rollout_known_steps)
-        if known_steps < dataset.history_len:
-            raise ValueError(
-                f"evaluation.full_rollout_known_steps must be >= dataset.history_len "
-                f"({dataset.history_len}), got {known_steps}."
-            )
-        return known_steps - 1
 
     @staticmethod
     def _all_reduce(tensor: torch.Tensor) -> None:

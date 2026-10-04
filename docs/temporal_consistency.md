@@ -16,10 +16,10 @@ checkpoint criterion are unchanged; computing TC adds no model forward.
 ## Modes and config
 
 All settings live under `training.temporal_consistency`. Append the chosen
-overlay last; launcher examples with independent dataset/loader settings are in
-the [shell handbook](../handbook.md#current-node2-launchers).
+overlay after model/selection overlays and before the runtime overlay. Run this
+phase only after choosing H, architecture, and K; see the [handbook](../handbook.md).
 
-| Overlay in `configs/TemporalConsistency/` | Mode | Temporal objective |
+| Overlay in `configs/ablations/temporal_consistency/` | Mode | Temporal objective |
 | --- | --- | --- |
 | `tc0_off.yaml` | `none`, disabled | Zero; state MSE only |
 | `tc1_adjacent_increment.yaml` | `adjacent_increment` | Match adjacent predicted and true increments |

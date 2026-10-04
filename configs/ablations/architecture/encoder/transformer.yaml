@@ -1,0 +1,3 @@
+model:
+  history_encoder:
+    history_encoder_type: transformer

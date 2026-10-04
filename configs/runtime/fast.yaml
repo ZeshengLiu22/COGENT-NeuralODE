@@ -1,0 +1,7 @@
+# Measured stable loader settings; scientific settings belong in other layers.
+dataset:
+  num_workers: 4
+  pin_memory: true
+  prefetch_factor: 2
+  persistent_workers: true
+  cache_in_memory: true

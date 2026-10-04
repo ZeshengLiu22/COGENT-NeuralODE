@@ -1,0 +1,14 @@
+dataset:
+  name: issm
+  data_dir: ./data/ISSM/PIG_5000
+  file_patterns:
+  - '*.mat'
+  - '*.npz'
+  - '*.pt'
+  - '*.pth'
+  split:
+    strategy: issm_rate_modulo
+    modulo: 20
+    val_remainder: 0
+    test_remainder: 10
+  issm: {}

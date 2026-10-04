@@ -1,0 +1,367 @@
+{
+  "base_commit": "f8beea444f0cb91f2829d3b2fb4e2bc0fd417cb2",
+  "added": [
+    "configs/ablations/architecture/encoder/lstm.yaml",
+    "configs/ablations/architecture/encoder/transformer.yaml",
+    "configs/ablations/architecture/ode_context/on.yaml",
+    "configs/ablations/architecture/relative_time/on.yaml",
+    "configs/ablations/architecture/residual/on.yaml",
+    "configs/ablations/future_len/k120.yaml",
+    "configs/ablations/future_len/k150.yaml",
+    "configs/ablations/future_len/k180.yaml",
+    "configs/ablations/future_len/k30.yaml",
+    "configs/ablations/future_len/k45.yaml",
+    "configs/ablations/future_len/k60.yaml",
+    "configs/ablations/future_len/k64.yaml",
+    "configs/ablations/future_len/k75.yaml",
+    "configs/ablations/future_len/k90.yaml",
+    "configs/ablations/history/h1.yaml",
+    "configs/ablations/history/h2.yaml",
+    "configs/ablations/history/h3.yaml",
+    "configs/ablations/history/h4.yaml",
+    "configs/ablations/history/h5.yaml",
+    "configs/ablations/history/h6.yaml",
+    "configs/ablations/history/h7.yaml",
+    "configs/ablations/history/h8.yaml",
+    "configs/ablations/rollout_start/known120.yaml",
+    "configs/ablations/rollout_start/known60.yaml",
+    "configs/ablations/rollout_start/known8.yaml",
+    "configs/ablations/rollout_start/known90.yaml",
+    "configs/datasets/adcirc.yaml",
+    "configs/datasets/anuga.yaml",
+    "configs/datasets/issm.yaml",
+    "configs/default.yaml",
+    "configs/models/node2.yaml",
+    "configs/protocols/anuga/main.yaml",
+    "configs/protocols/issm/main.yaml",
+    "configs/runtime/fast.yaml",
+    "docs/config_evaluation_refactor_20261004.md",
+    "docs/refactor_validation/cpu_tests.txt",
+    "docs/refactor_validation/real_prefix.json",
+    "docs/refactor_validation/results.json",
+    "eval_rollout_start_sweep.sh",
+    "eval_rollout_tmux.sh",
+    "old-files/config-evaluation-history-20261004/README.md",
+    "old-files/config-evaluation-history-20261004/docs/foundation_audit.json",
+    "old-files/config-evaluation-history-20261004/file_inventory.json",
+    "old-files/config-evaluation-history-20261004/migration_details.md",
+    "sbatch_scripts_sigspatial_issm/_run_issm_node2_temporal_consistency_scan.sh",
+    "sbatch_scripts_sigspatial_issm/submit_issm_architecture_scan.sh",
+    "sbatch_scripts_sigspatial_issm/submit_issm_temporal_consistency_scan.sh",
+    "scripts/postprocess_rollout.py",
+    "scripts/sweep_config.sh",
+    "shell_scripts_sigspatial_issm/_run_issm_node2_temporal_consistency_scan_local.sh",
+    "shell_scripts_sigspatial_issm/run_issm_architecture_scan_sequential.sh",
+    "shell_scripts_sigspatial_issm/run_issm_temporal_consistency_scan_sequential.sh",
+    "tests/check_rollout_ddp.py",
+    "tests/test_configs.py",
+    "tests/test_rollout_artifacts.py",
+    "utils/rollout_postprocess.py"
+  ],
+  "deleted": [
+    "configs/ANUGA_History_Scan/anuga_fast_loader.yaml",
+    "configs/ANUGA_History_Scan/base_ANUGA_history1.yaml",
+    "configs/ANUGA_History_Scan/base_ANUGA_history2.yaml",
+    "configs/ANUGA_History_Scan/base_ANUGA_history3.yaml",
+    "configs/ANUGA_History_Scan/base_ANUGA_history4.yaml",
+    "configs/ANUGA_History_Scan/base_ANUGA_history5.yaml",
+    "configs/ANUGA_History_Scan/base_ANUGA_history6.yaml",
+    "configs/ANUGA_History_Scan/base_ANUGA_history7.yaml",
+    "configs/ANUGA_History_Scan/base_ANUGA_history8.yaml",
+    "configs/ISSM_Future_Len_Ablation/base_ISSM_history6_future120.yaml",
+    "configs/ISSM_Future_Len_Ablation/base_ISSM_history6_future150.yaml",
+    "configs/ISSM_Future_Len_Ablation/base_ISSM_history6_future180.yaml",
+    "configs/ISSM_Future_Len_Ablation/base_ISSM_history6_future30.yaml",
+    "configs/ISSM_Future_Len_Ablation/base_ISSM_history6_future45.yaml",
+    "configs/ISSM_Future_Len_Ablation/base_ISSM_history6_future60.yaml",
+    "configs/ISSM_Future_Len_Ablation/base_ISSM_history6_future75.yaml",
+    "configs/ISSM_Future_Len_Ablation/base_ISSM_history6_future90.yaml",
+    "configs/ISSM_History_Scan/base_ISSM_history_1.yaml",
+    "configs/ISSM_History_Scan/base_ISSM_history_2.yaml",
+    "configs/ISSM_History_Scan/base_ISSM_history_3.yaml",
+    "configs/ISSM_History_Scan/base_ISSM_history_4.yaml",
+    "configs/ISSM_History_Scan/base_ISSM_history_5.yaml",
+    "configs/ISSM_History_Scan/base_ISSM_history_6.yaml",
+    "configs/ISSM_History_Scan/base_ISSM_history_7.yaml",
+    "configs/ISSM_History_Scan/base_ISSM_history_8.yaml",
+    "configs/ISSM_History_Scan/issm_pig5000_fast_loader.yaml",
+    "configs/NODE2_Upgrade1_Ablation/model_node2_full_upgrade.yaml",
+    "configs/NODE2_Upgrade1_Ablation/model_node2_history_in_ode_only.yaml",
+    "configs/NODE2_Upgrade1_Ablation/model_node2_relative_time_only.yaml",
+    "configs/NODE2_Upgrade1_Ablation/model_node2_residual_only.yaml",
+    "configs/NODE2_Upgrade1_Ablation/model_node2_upgrade_off.yaml",
+    "configs/adcirc.yaml",
+    "configs/anuga.yaml",
+    "configs/base_sample.yaml",
+    "configs/issm.yaml",
+    "configs/issm_paper_matched.yaml",
+    "configs/model_node2.yaml",
+    "eval_anuga_ablation_rollouts.sh",
+    "eval_anuga_history_rollouts.sh",
+    "eval_full_rollout_tmux.sh",
+    "eval_window_tmux.sh",
+    "experiments/dataloader_speed_sweep/recommended_pig5000_loader.yaml",
+    "sbatch_scripts_sigspatial_issm/submit_issm_upgrade1_ablation.sh",
+    "sbatch_scripts_sigspatial_issm/train_issm_node2_ablate_history_in_ode_only.sh",
+    "sbatch_scripts_sigspatial_issm/train_issm_node2_ablate_no_history_in_ode.sh",
+    "sbatch_scripts_sigspatial_issm/train_issm_node2_ablate_no_relative_time.sh",
+    "sbatch_scripts_sigspatial_issm/train_issm_node2_ablate_no_residual.sh",
+    "sbatch_scripts_sigspatial_issm/train_issm_node2_ablate_relative_time_only.sh",
+    "sbatch_scripts_sigspatial_issm/train_issm_node2_ablate_residual_only.sh",
+    "scripts/run_full_rollout.py",
+    "shell_scripts_sigspatial_issm/run_issm_upgrade1_ablation_sequential.sh",
+    "shell_scripts_sigspatial_issm/train_issm_node2_ablate_full_upgrade.sh",
+    "shell_scripts_sigspatial_issm/train_issm_node2_ablate_history_in_ode_only.sh",
+    "shell_scripts_sigspatial_issm/train_issm_node2_ablate_no_history_in_ode.sh",
+    "shell_scripts_sigspatial_issm/train_issm_node2_ablate_no_relative_time.sh",
+    "shell_scripts_sigspatial_issm/train_issm_node2_ablate_no_residual.sh",
+    "shell_scripts_sigspatial_issm/train_issm_node2_ablate_relative_time_only.sh",
+    "shell_scripts_sigspatial_issm/train_issm_node2_ablate_residual_only.sh",
+    "shell_scripts_sigspatial_issm/train_issm_node2_ablate_upgrade_off.sh"
+  ],
+  "modified": [
+    "config_setting.md",
+    "datasets/base_dataset.py",
+    "datasets/factory.py",
+    "datasets/window_utils.py",
+    "docs/foundation_audit.json",
+    "docs/temporal_consistency.md",
+    "experiments/dataloader_speed_sweep/README.md",
+    "experiments/dataloader_speed_sweep/demo_defaults.yaml",
+    "experiments/dataloader_speed_sweep/formal_train_smoke_fullhorizon.yaml",
+    "experiments/dataloader_speed_sweep/formal_train_smoke_h60.yaml",
+    "experiments/dataloader_speed_sweep/run_sweep.py",
+    "experiments/dataloader_speed_sweep/train_timed.py",
+    "handbook.md",
+    "sbatch_scripts_cercat_anuga/_run_anuga_node2_history_scan.sh",
+    "sbatch_scripts_sigspatial_issm/_run_issm_node2_future_len_ablation.sh",
+    "sbatch_scripts_sigspatial_issm/_run_issm_node2_history_scan.sh",
+    "sbatch_scripts_sigspatial_issm/submit_issm_future_len_ablation.sh",
+    "scripts/audit_foundation.py",
+    "scripts/audit_relative_time.py",
+    "scripts/check_solver_convergence.py",
+    "scripts/evaluate.py",
+    "scripts/train.py",
+    "shell_scripts_sigspatial_issm/_run_issm_node2_future_len_ablation_local.sh",
+    "shell_scripts_sigspatial_issm/_run_issm_node2_history_scan_local.sh",
+    "shell_scripts_sigspatial_issm/run_issm_future_len_ablation_sequential.sh",
+    "tests/check_temporal_ddp.py",
+    "tests/test_foundation_checkpoint.py",
+    "tests/test_foundation_datasets.py",
+    "tests/test_foundation_model.py",
+    "tests/test_foundation_training.py",
+    "tests/test_launchers.py",
+    "tests/test_smoke.py",
+    "tests/test_temporal_losses.py",
+    "train_anuga.sh",
+    "train_anuga_node2.sh",
+    "train_issm.sh",
+    "train_issm_node2.sh",
+    "training/evaluator.py",
+    "training/trainer.py",
+    "utils/checkpoint_evaluation.py",
+    "utils/eval_artifacts.py"
+  ],
+  "moved": [
+    {
+      "from": "configs/NODE2_Upgrade1_Ablation/model_node2_no_history_in_ode.yaml",
+      "to": "configs/ablations/architecture/ode_context/off.yaml",
+      "similarity": 100
+    },
+    {
+      "from": "configs/NODE2_Upgrade1_Ablation/model_node2_no_relative_time.yaml",
+      "to": "configs/ablations/architecture/relative_time/off.yaml",
+      "similarity": 100
+    },
+    {
+      "from": "configs/NODE2_Upgrade1_Ablation/model_node2_no_residual.yaml",
+      "to": "configs/ablations/architecture/residual/off.yaml",
+      "similarity": 100
+    },
+    {
+      "from": "configs/TemporalConsistency/tc0_off.yaml",
+      "to": "configs/ablations/temporal_consistency/tc0_off.yaml",
+      "similarity": 100
+    },
+    {
+      "from": "configs/TemporalConsistency/tc1_adjacent_increment.yaml",
+      "to": "configs/ablations/temporal_consistency/tc1_adjacent_increment.yaml",
+      "similarity": 100
+    },
+    {
+      "from": "configs/TemporalConsistency/tc2_random_pair_increment.yaml",
+      "to": "configs/ablations/temporal_consistency/tc2_random_pair_increment.yaml",
+      "similarity": 100
+    },
+    {
+      "from": "configs/TemporalConsistency/tc3_multiscale_rate.yaml",
+      "to": "configs/ablations/temporal_consistency/tc3_multiscale_rate.yaml",
+      "similarity": 100
+    },
+    {
+      "from": "configs/TemporalConsistency/tc4_rate_curvature.yaml",
+      "to": "configs/ablations/temporal_consistency/tc4_rate_curvature.yaml",
+      "similarity": 100
+    },
+    {
+      "from": "configs/TemporalConsistency/tc5_hybrid.yaml",
+      "to": "configs/ablations/temporal_consistency/tc5_hybrid.yaml",
+      "similarity": 100
+    },
+    {
+      "from": "docs/continuous_graph_emulator_master_handbook.md",
+      "to": "old-files/config-evaluation-history-20261004/docs/continuous_graph_emulator_master_handbook.md",
+      "similarity": 100
+    },
+    {
+      "from": "docs/data_flow(old).md",
+      "to": "old-files/config-evaluation-history-20261004/docs/data_flow(old).md",
+      "similarity": 100
+    },
+    {
+      "from": "docs/data_flow(old).tex",
+      "to": "old-files/config-evaluation-history-20261004/docs/data_flow(old).tex",
+      "similarity": 100
+    },
+    {
+      "from": "docs/final_cleanup_validation.md",
+      "to": "old-files/config-evaluation-history-20261004/docs/final_cleanup_validation.md",
+      "similarity": 100
+    },
+    {
+      "from": "docs/foundation_correctness_repair.md",
+      "to": "old-files/config-evaluation-history-20261004/docs/foundation_correctness_repair.md",
+      "similarity": 100
+    },
+    {
+      "from": "docs/repair_validation/cpu_tests.txt",
+      "to": "old-files/config-evaluation-history-20261004/docs/repair_validation/cpu_tests.txt",
+      "similarity": 100
+    },
+    {
+      "from": "docs/repair_validation/real_prefix.json",
+      "to": "old-files/config-evaluation-history-20261004/docs/repair_validation/real_prefix.json",
+      "similarity": 100
+    },
+    {
+      "from": "docs/repair_validation/synthetic_training_smoke.json",
+      "to": "old-files/config-evaluation-history-20261004/docs/repair_validation/synthetic_training_smoke.json",
+      "similarity": 100
+    },
+    {
+      "from": "docs/upgrade_v1.1.md",
+      "to": "old-files/config-evaluation-history-20261004/docs/upgrade_v1.1.md",
+      "similarity": 100
+    },
+    {
+      "from": "docs/upgrade_v1.md",
+      "to": "old-files/config-evaluation-history-20261004/docs/upgrade_v1.md",
+      "similarity": 100
+    },
+    {
+      "from": "docs/upgrade_v2.md",
+      "to": "old-files/config-evaluation-history-20261004/docs/upgrade_v2.md",
+      "similarity": 100
+    },
+    {
+      "from": "sbatch_scripts_sigspatial_issm/_run_issm_node2_upgrade1_ablation.sh",
+      "to": "sbatch_scripts_sigspatial_issm/_run_issm_node2_architecture_scan.sh",
+      "similarity": 65
+    },
+    {
+      "from": "sbatch_scripts_sigspatial_issm/train_issm_node2_ablate_upgrade_off.sh",
+      "to": "sbatch_scripts_sigspatial_issm/train_issm_node2_architecture.sh",
+      "similarity": 71
+    },
+    {
+      "from": "sbatch_scripts_sigspatial_issm/train_issm_node2_h6_future120_u11.sh",
+      "to": "sbatch_scripts_sigspatial_issm/train_issm_node2_future120.sh",
+      "similarity": 91
+    },
+    {
+      "from": "sbatch_scripts_sigspatial_issm/train_issm_node2_h6_future150_u11.sh",
+      "to": "sbatch_scripts_sigspatial_issm/train_issm_node2_future150.sh",
+      "similarity": 91
+    },
+    {
+      "from": "sbatch_scripts_sigspatial_issm/train_issm_node2_h6_future180_u11.sh",
+      "to": "sbatch_scripts_sigspatial_issm/train_issm_node2_future180.sh",
+      "similarity": 91
+    },
+    {
+      "from": "sbatch_scripts_sigspatial_issm/train_issm_node2_h6_future30_u11.sh",
+      "to": "sbatch_scripts_sigspatial_issm/train_issm_node2_future30.sh",
+      "similarity": 91
+    },
+    {
+      "from": "sbatch_scripts_sigspatial_issm/train_issm_node2_h6_future45_u11.sh",
+      "to": "sbatch_scripts_sigspatial_issm/train_issm_node2_future45.sh",
+      "similarity": 91
+    },
+    {
+      "from": "sbatch_scripts_sigspatial_issm/train_issm_node2_h6_future60_u11.sh",
+      "to": "sbatch_scripts_sigspatial_issm/train_issm_node2_future60.sh",
+      "similarity": 91
+    },
+    {
+      "from": "sbatch_scripts_sigspatial_issm/train_issm_node2_h6_future75_u11.sh",
+      "to": "sbatch_scripts_sigspatial_issm/train_issm_node2_future75.sh",
+      "similarity": 91
+    },
+    {
+      "from": "sbatch_scripts_sigspatial_issm/train_issm_node2_h6_future90_u11.sh",
+      "to": "sbatch_scripts_sigspatial_issm/train_issm_node2_future90.sh",
+      "similarity": 91
+    },
+    {
+      "from": "sbatch_scripts_sigspatial_issm/train_issm_node2_ablate_full_upgrade.sh",
+      "to": "sbatch_scripts_sigspatial_issm/train_issm_node2_temporal_consistency.sh",
+      "similarity": 71
+    },
+    {
+      "from": "shell_scripts_sigspatial_issm/_run_issm_node2_upgrade1_ablation_local.sh",
+      "to": "shell_scripts_sigspatial_issm/_run_issm_node2_architecture_scan_local.sh",
+      "similarity": 70
+    },
+    {
+      "from": "shell_scripts_sigspatial_issm/train_issm_node2_h6_future120_u11.sh",
+      "to": "shell_scripts_sigspatial_issm/train_issm_node2_future120.sh",
+      "similarity": 90
+    },
+    {
+      "from": "shell_scripts_sigspatial_issm/train_issm_node2_h6_future150_u11.sh",
+      "to": "shell_scripts_sigspatial_issm/train_issm_node2_future150.sh",
+      "similarity": 90
+    },
+    {
+      "from": "shell_scripts_sigspatial_issm/train_issm_node2_h6_future180_u11.sh",
+      "to": "shell_scripts_sigspatial_issm/train_issm_node2_future180.sh",
+      "similarity": 90
+    },
+    {
+      "from": "shell_scripts_sigspatial_issm/train_issm_node2_h6_future30_u11.sh",
+      "to": "shell_scripts_sigspatial_issm/train_issm_node2_future30.sh",
+      "similarity": 90
+    },
+    {
+      "from": "shell_scripts_sigspatial_issm/train_issm_node2_h6_future45_u11.sh",
+      "to": "shell_scripts_sigspatial_issm/train_issm_node2_future45.sh",
+      "similarity": 90
+    },
+    {
+      "from": "shell_scripts_sigspatial_issm/train_issm_node2_h6_future60_u11.sh",
+      "to": "shell_scripts_sigspatial_issm/train_issm_node2_future60.sh",
+      "similarity": 90
+    },
+    {
+      "from": "shell_scripts_sigspatial_issm/train_issm_node2_h6_future75_u11.sh",
+      "to": "shell_scripts_sigspatial_issm/train_issm_node2_future75.sh",
+      "similarity": 90
+    },
+    {
+      "from": "shell_scripts_sigspatial_issm/train_issm_node2_h6_future90_u11.sh",
+      "to": "shell_scripts_sigspatial_issm/train_issm_node2_future90.sh",
+      "similarity": 90
+    }
+  ]
+}

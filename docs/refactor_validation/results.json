@@ -1,0 +1,71 @@
+{
+  "date": "2026-10-04",
+  "base_commit": "f8beea444f0cb91f2829d3b2fb4e2bc0fd417cb2",
+  "python": "/work/09575/zeshengliu/conda_envs/torchpyg-cu128-cge/bin/python",
+  "python_version": "3.11",
+  "torch_version": "2.8.0+cu128",
+  "execution_device": "cpu",
+  "cuda_available": false,
+  "unit_suite": {
+    "command": "OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 python -m unittest discover -s tests -v",
+    "tests": 126,
+    "result": "passed",
+    "seconds": 28.531,
+    "log": "cpu_tests.txt"
+  },
+  "distributed_checks": [
+    {
+      "command": "GLOO_SOCKET_IFNAME=lo OMP_NUM_THREADS=1 python tests/check_temporal_ddp.py",
+      "processes": 2,
+      "result": "passed",
+      "coverage": "Rank-specific private RNG, dropout isolation, objective all-reduction, one forward per batch"
+    },
+    {
+      "command": "GLOO_SOCKET_IFNAME=lo OMP_NUM_THREADS=1 python tests/check_rollout_ddp.py",
+      "processes": 2,
+      "result": "passed",
+      "coverage": "Uneven and empty scenario shards, no padding, all rollout metrics agree with single rank at 1e-13"
+    }
+  ],
+  "real_foundation_audit": {
+    "result": "passed",
+    "artifact": "../foundation_audit.json",
+    "issm_splits": [
+      28,
+      4,
+      4
+    ],
+    "anuga_splits": [
+      12,
+      4,
+      4
+    ]
+  },
+  "real_prefix_audit": {
+    "result": "passed",
+    "artifact": "real_prefix.json",
+    "issm_nodes": 2852,
+    "anuga_nodes": 68464,
+    "max_prediction_difference": 0.0,
+    "model": "Compact untrained NODE2; validation only"
+  },
+  "shell_syntax": {
+    "active_scripts": 67,
+    "result": "passed"
+  },
+  "python_compileall": {
+    "result": "passed"
+  },
+  "git_diff_check": {
+    "result": "passed"
+  },
+  "stale_reference_audit": {
+    "result": "passed",
+    "active_hits": 0,
+    "historical_exclusions": [
+      "old-files/",
+      "legacy-v2/"
+    ]
+  },
+  "scope": "Synthetic CPU optimization/evaluation and read-only real-data checks. Formal training sweeps and CUDA precision checks were not run."
+}

@@ -1,0 +1,41 @@
+model:
+  use_relative_time: true
+  latent_dim: 96
+  dropout: 0.0
+  decoder_hidden_dims:
+  - 96
+  - 96
+  decoder_activation: gelu
+  history_encoder:
+    static_hidden_dims:
+    - 96
+    - 96
+    static_embed_dim: 96
+    gnn_hidden_dim: 96
+    gnn_num_layers: 2
+    gnn_type: sage
+    gnn_activation: gelu
+    lstm_hidden_dim: 96
+    lstm_num_layers: 1
+    history_encoder_type: transformer
+    history_transformer_num_layers: 2
+    history_transformer_num_heads: 4
+    history_transformer_ff_dim: 384
+    history_transformer_dropout: 0.05
+    history_use_positional_encoding: true
+    history_context_pooling: last
+    dropout: 0.05
+  continuous:
+    hidden_dim: 96
+    num_layers: 2
+    gnn_type: sage
+    activation: softplus
+    dropout: 0.0
+  use_residual_decoder: true
+  use_history_in_ode: true
+solver:
+  ode_method: midpoint
+  interpolation: hermite_cubic_backward
+  rtol: 0.0001
+  atol: 1.0e-05
+  ode_options: null

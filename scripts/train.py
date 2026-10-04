@@ -56,6 +56,7 @@ def main() -> None:
     logger = configure_logging(output_dir / "train.log" if rank == 0 else None)
     if rank == 0:
         save_json(output_dir / "config.json", config)
+        (output_dir / "config_stack.txt").write_text("".join(f"{path}\n" for path in args.config), encoding="utf-8")
 
     train_files, val_files, test_files = build_splits(config)
     if rank == 0:
@@ -66,12 +67,11 @@ def main() -> None:
     train_dataset = build_dataset(dataset_name, train_files, split="train", config=config, normalizer=None, sample_windows=True)
     normalizer = FeatureNormalizer.fit_from_trajectories(train_dataset.iter_trajectories(), std_floor=float(config["normalization"]["std_floor"]))
     train_dataset.normalizer = normalizer
-    val_dataset = build_dataset(dataset_name, val_files, split="val", config=config, normalizer=normalizer)
-    test_dataset = build_dataset(dataset_name, test_files, split="test", config=config, normalizer=normalizer)
+    val_dataset = build_dataset(dataset_name, val_files, split="val", config=config, normalizer=normalizer, sample_windows=False)
+    test_dataset = build_dataset(dataset_name, test_files, split="test", config=config, normalizer=normalizer, sample_windows=False)
 
     dataset_cfg = config["dataset"]
     num_workers = int(dataset_cfg.get("num_workers", 0))
-    val_num_workers = int(dataset_cfg.get("val_num_workers", num_workers))
     pin_memory = bool(dataset_cfg.get("pin_memory", False))
     prefetch_factor = dataset_cfg.get("prefetch_factor", None)
     persistent_workers = bool(dataset_cfg.get("persistent_workers", False))
@@ -80,7 +80,6 @@ def main() -> None:
             "dataloader_settings=%s",
             {
                 "num_workers": num_workers,
-                "val_num_workers": val_num_workers,
                 "pin_memory": pin_memory,
                 "prefetch_factor": prefetch_factor,
                 "persistent_workers": persistent_workers,
@@ -97,28 +96,6 @@ def main() -> None:
         prefetch_factor=prefetch_factor,
         persistent_workers=persistent_workers,
     )
-    eval_batch_size = int(config["evaluation"].get("batch_size", 1))
-    val_loader = build_loader(
-        val_dataset,
-        batch_size=eval_batch_size,
-        num_workers=val_num_workers,
-        distributed=bool(ddp_info["enabled"]),
-        shuffle=False,
-        pin_memory=pin_memory,
-        prefetch_factor=prefetch_factor,
-        persistent_workers=persistent_workers,
-    )
-    test_loader = build_loader(
-        test_dataset,
-        batch_size=eval_batch_size,
-        num_workers=val_num_workers,
-        distributed=bool(ddp_info["enabled"]),
-        shuffle=False,
-        pin_memory=pin_memory,
-        prefetch_factor=prefetch_factor,
-        persistent_workers=persistent_workers,
-    )
-
     sample = train_dataset[0]
     model = build_model(config, sample.x_static.shape[-1], sample.force_hist.shape[-1], sample.state_hist.shape[-1]).to(device)
     if ddp_info["enabled"]:
@@ -127,8 +104,6 @@ def main() -> None:
     trainer = Trainer(
         model=model,
         train_loader=train_loader,
-        val_loader=val_loader,
-        test_loader=test_loader,
         train_dataset=train_dataset,
         val_dataset=val_dataset,
         test_dataset=test_dataset,

@@ -74,14 +74,15 @@ class FoundationTrainingTest(unittest.TestCase):
             "training": {"epochs": 1, "lr": 0.0, "grad_accum_steps": 2,
                          "train_horizon_mode": "uniform_random", "train_horizon_min": future_len,
                          "train_horizon_curriculum": {"enabled": False}},
-            "evaluation": evaluation or {}, "amp": {"mode": training_amp},
+            "evaluation": {"known_steps": 1, **(evaluation or {})}, "amp": {"mode": training_amp},
         }
         config["training"].update(training or {})
         datasets = []
         for split in ("train", "val", "test"):
             path = root / f"{split}.npz"
             path.touch()
-            datasets.append(SimpleNamespace(scenario_files=[path], future_len=future_len,
+            datasets.append(SimpleNamespace(scenario_files=[path], future_len=future_len, history_len=1,
+                                            scenario_infos=[{"length": future_len + 1}],
                                             set_epoch=lambda epoch: None))
         time = torch.arange(1, future_len + 1, dtype=torch.float32)
         batches = BatchLoader(
@@ -89,7 +90,7 @@ class FoundationTrainingTest(unittest.TestCase):
                  t_future=time.view(1, -1).clone())
             for target, nodes in zip((1.0, 3.0, 5.0), node_counts)
         )
-        return Trainer(model if model is not None else ScalarModel(), batches, [], [],
+        return Trainer(model if model is not None else ScalarModel(), batches,
                        *datasets, IdentityNormalizer(),
                        config, torch.device("cpu"), root / "output", logging.getLogger(__name__))
 
@@ -103,9 +104,7 @@ class FoundationTrainingTest(unittest.TestCase):
             )
             # Exercise the actual fit/history/checkpoint path; evaluation remains
             # independent of the training objective and contributes no forwards.
-            with patch.object(trainer.evaluator, "evaluate_loader", return_value={
-                "norm_rmse": 2.0, "rmse": 3.0,
-            }), patch.object(trainer.evaluator, "evaluate_full_rollout", return_value={
+            with patch.object(trainer.evaluator, "evaluate_full_rollout", return_value={
                 "whole_rollout_norm_rmse": 2.0, "whole_rollout_rmse": 3.0,
             }):
                 summary = trainer.fit()
@@ -124,6 +123,8 @@ class FoundationTrainingTest(unittest.TestCase):
             self.assertEqual(trainer.tc_weight, 1.0)
             self.assertEqual(summary["best_metric_name"], "whole_rollout_norm_rmse")
             self.assertEqual(summary["best_metric"], 2.0)
+            self.assertEqual(set(history[0]), {"epoch", "train", "val_rollout"})
+            self.assertEqual(set(summary), {"best_epoch", "best_metric_name", "best_metric_scale", "best_metric", "known_steps", "test_rollout"})
 
             # Optimization diagnostics average microbatches equally, whereas
             # prediction metrics retain their existing per-element weighting.
@@ -307,25 +308,20 @@ class FoundationTrainingTest(unittest.TestCase):
             def get_rollout_data(self, *args, **kwargs):
                 return sample
 
-        class Loader(list):
-            dataset = Dataset()
-
         evaluator = Evaluator(PhysicalModel(), IdentityNormalizer(), torch.device("cpu"))
-        window = evaluator.evaluate_loader(Loader([sample]))
-        rollout = evaluator.evaluate_full_rollout(Dataset())
-        self.assertAlmostEqual(window["speed_rmse_m_per_yr"], np.sqrt(12.5))
-        self.assertEqual(window["thickness_rmse_m"], 5.0)
+        rollout = evaluator.evaluate_full_rollout(Dataset(), known_steps=1)
         self.assertAlmostEqual(rollout["whole_rollout_speed_rmse_m_per_yr"], np.sqrt(12.5))
+        self.assertEqual(rollout["whole_rollout_thickness_rmse_m"], 5.0)
         self.assertEqual(rollout["final_step_speed_rmse_m_per_yr"], 0.0)
         self.assertEqual(len(rollout["horizon_rmse_curve"]), 2)
         pred = prediction.numpy().reshape(-1, 3)
         true = target.numpy().reshape(-1, 3)
         standalone, _ = _metric_rows_and_values(
-            scope="window", pred_phys=pred, target_phys=true, pred_norm=pred,
+            scope="whole_rollout", pred_phys=pred, target_phys=true, pred_norm=pred,
             target_norm=true, channel_names=["vx", "vy", "thickness"], metric_prefix="",
         )
-        self.assertAlmostEqual(standalone["speed_rmse_m_per_yr"], window["speed_rmse_m_per_yr"])
-        self.assertEqual(standalone["thickness_rmse_m"], window["thickness_rmse_m"])
+        self.assertAlmostEqual(standalone["speed_rmse_m_per_yr"], rollout["whole_rollout_speed_rmse_m_per_yr"])
+        self.assertEqual(standalone["thickness_rmse_m"], rollout["whole_rollout_thickness_rmse_m"])
 
 
 if __name__ == "__main__":

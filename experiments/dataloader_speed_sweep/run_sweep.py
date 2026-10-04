@@ -25,73 +25,64 @@ DEFAULT_DATA_DIR = "./data/ISSM/PIG_5000"
 
 DEFAULT_COMBOS: list[dict[str, Any]] = [
     {
-        "name": "nw4_vw4_pin0_pfnone_persist0",
+        "name": "nw4_pin0_pfnone_persist0",
         "num_workers": 4,
-        "val_num_workers": 4,
         "pin_memory": False,
         "prefetch_factor": None,
         "persistent_workers": False,
     },
     {
-        "name": "nw0_vw0_pin0_pfnone_persist0",
+        "name": "nw0_pin0_pfnone_persist0",
         "num_workers": 0,
-        "val_num_workers": 0,
         "pin_memory": False,
         "prefetch_factor": None,
         "persistent_workers": False,
     },
     {
-        "name": "nw2_vw2_pin1_pf2_persist1",
+        "name": "nw2_pin1_pf2_persist1",
         "num_workers": 2,
-        "val_num_workers": 2,
         "pin_memory": True,
         "prefetch_factor": 2,
         "persistent_workers": True,
     },
     {
-        "name": "nw4_vw4_pin1_pf2_persist0",
+        "name": "nw4_pin1_pf2_persist0",
         "num_workers": 4,
-        "val_num_workers": 4,
         "pin_memory": True,
         "prefetch_factor": 2,
         "persistent_workers": False,
     },
     {
-        "name": "nw4_vw4_pin1_pf2_persist1",
+        "name": "nw4_pin1_pf2_persist1",
         "num_workers": 4,
-        "val_num_workers": 4,
         "pin_memory": True,
         "prefetch_factor": 2,
         "persistent_workers": True,
     },
     {
-        "name": "nw4_vw4_pin1_pf4_persist1",
+        "name": "nw4_pin1_pf4_persist1",
         "num_workers": 4,
-        "val_num_workers": 4,
         "pin_memory": True,
         "prefetch_factor": 4,
         "persistent_workers": True,
     },
     {
-        "name": "nw8_vw4_pin1_pf2_persist1",
+        "name": "nw8_pin1_pf2_persist1",
         "num_workers": 8,
-        "val_num_workers": 4,
         "pin_memory": True,
         "prefetch_factor": 2,
         "persistent_workers": True,
     },
     {
-        "name": "nw8_vw8_pin1_pf2_persist1",
+        "name": "nw8_pin1_pf2_persist1",
         "num_workers": 8,
-        "val_num_workers": 8,
         "pin_memory": True,
         "prefetch_factor": 2,
         "persistent_workers": True,
     },
     {
-        "name": "nw8_vw8_pin1_pf4_persist1",
+        "name": "nw8_pin1_pf4_persist1",
         "num_workers": 8,
-        "val_num_workers": 8,
         "pin_memory": True,
         "prefetch_factor": 4,
         "persistent_workers": True,
@@ -101,14 +92,15 @@ DEFAULT_COMBOS: list[dict[str, Any]] = [
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--base-config", default="configs/ISSM_History_Scan/base_ISSM_history_4.yaml")
-    parser.add_argument("--dataset-config", default="configs/issm.yaml")
-    parser.add_argument("--model-config", default="configs/model_node2.yaml")
+    parser.add_argument("--default-config", default="configs/default.yaml")
+    parser.add_argument("--protocol-config", default="configs/protocols/issm/main.yaml")
+    parser.add_argument("--dataset-config", default="configs/datasets/issm.yaml")
+    parser.add_argument("--model-config", default="configs/models/node2.yaml")
     parser.add_argument("--extra-config", action="append", default=[])
     parser.add_argument(
         "--data-dir",
         default=DEFAULT_DATA_DIR,
-        help="ISSM subset to sweep. Defaults to the PIG_5000-only directory, not PIG_data.",
+        help="ISSM subset to sweep. Defaults to the canonical PIG_5000 directory.",
     )
     parser.add_argument("--epochs", type=int, default=3)
     parser.add_argument("--val-every", type=int, default=1)
@@ -123,11 +115,6 @@ def parse_args() -> argparse.Namespace:
         choices=("on", "off"),
         default=None,
         help="Override training.train_horizon_curriculum.enabled for each timed run.",
-    )
-    parser.add_argument(
-        "--skip-full-rollout-on-val",
-        action="store_true",
-        help="Disable full-rollout validation for train-loader-only timing.",
     )
     parser.add_argument("--nproc", type=int, default=4)
     parser.add_argument("--output-root", default="experiments/dataloader_speed_sweep/outputs")
@@ -189,7 +176,6 @@ def flatten_result(row: dict[str, Any]) -> dict[str, Any]:
         "returncode": row["returncode"],
         "run_name": row["run_name"],
         "num_workers": combo["num_workers"],
-        "val_num_workers": combo["val_num_workers"],
         "pin_memory": combo["pin_memory"],
         "prefetch_factor": combo["prefetch_factor"],
         "persistent_workers": combo["persistent_workers"],
@@ -197,7 +183,6 @@ def flatten_result(row: dict[str, Any]) -> dict[str, Any]:
         "mean_train_windows_per_sec_warm": summary.get("mean_train_windows_per_sec_warm"),
         "mean_train_seconds_all": summary.get("mean_train_seconds_all"),
         "mean_train_windows_per_sec_all": summary.get("mean_train_windows_per_sec_all"),
-        "mean_val_seconds_all": summary.get("mean_val_seconds_all"),
         "mean_epoch_seconds_all": summary.get("mean_epoch_seconds_all"),
         "summary_path": row.get("summary_path"),
         "log_path": row["log_path"],
@@ -236,8 +221,9 @@ def main() -> None:
         raise FileNotFoundError(f"Configured data directory does not exist: {data_dir_path}")
 
     base_configs = [
-        resolve_project_path(args.base_config),
+        resolve_project_path(args.default_config),
         resolve_project_path(args.dataset_config),
+        resolve_project_path(args.protocol_config),
         resolve_project_path(args.model_config),
         *[resolve_project_path(path) for path in args.extra_config],
     ]
@@ -257,7 +243,6 @@ def main() -> None:
             "dataset": {
                 "data_dir": args.data_dir,
                 "num_workers": int(combo["num_workers"]),
-                "val_num_workers": int(combo["val_num_workers"]),
                 "pin_memory": bool(combo["pin_memory"]),
                 "prefetch_factor": combo["prefetch_factor"],
                 "persistent_workers": bool(combo["persistent_workers"]),
@@ -265,10 +250,6 @@ def main() -> None:
             "training": {
                 "epochs": int(args.epochs),
                 "val_every": int(args.val_every),
-            },
-            "evaluation": {
-                "full_rollout_on_val": not bool(args.skip_full_rollout_on_val),
-                "checkpoint_metric": "norm_rmse" if args.skip_full_rollout_on_val else "whole_rollout_norm_rmse",
             },
         }
         if args.train_horizon_max is not None:

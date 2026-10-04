@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 import json
 import sys
 import unittest
@@ -16,9 +17,13 @@ import torch
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
+if str(PROJECT_ROOT / "scripts") not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
+from audit_foundation import validate_main_protocol, validate_temporal_settings
 from datasets.base_dataset import BaseTemporalGraphDataset, TrajectoryData
-from datasets.factory import DistributedEvaluationSampler, build_dataset, build_loader
+from datasets.factory import build_dataset, build_loader
+from torch.utils.data.distributed import DistributedSampler
 from datasets.issm_dataset import ISSMDataset
 from datasets.normalization import FeatureNormalizer
 from datasets.split_utils import issm_rate_modulo_split, parse_issm_rate_from_filename
@@ -54,10 +59,10 @@ class _SyntheticDataset(BaseTemporalGraphDataset):
         steps = int(path.stem)
         return TrajectoryData(
             x_static=np.zeros((3, 4), dtype=np.float32),
-            force=np.zeros((steps, 3, 2), dtype=np.float32),
-            state=np.zeros((steps, 3, 3), dtype=np.float32),
+            force=np.broadcast_to(np.arange(steps, dtype=np.float32)[:, None, None], (steps, 3, 2)).copy(),
+            state=np.broadcast_to(np.arange(steps, dtype=np.float32)[:, None, None], (steps, 3, 3)).copy(),
             edge_index=np.array([[0, 1], [1, 0]]),
-            times=np.arange(steps, dtype=np.float32),
+            times=12.0 + 2.5 * np.arange(steps, dtype=np.float32),
             scenario_id=str(path),
             sim_id=str(path),
         )
@@ -162,54 +167,88 @@ class NormalizationTest(unittest.TestCase):
         self.assertTrue(torch.equal(normalizer.transform_force(torch.from_numpy(zeros)), torch.zeros(4, 1)))
 
 
-class ReferenceWindowTest(unittest.TestCase):
-    def test_missing_reference_preserves_existing_windows(self):
+class TrainingWindowTest(unittest.TestCase):
+    def test_enumeration_has_only_h_k_stride_and_inclusive_valid_anchors(self):
+        self.assertEqual(list(inspect.signature(enumerate_window_end_indices).parameters),
+                         ["total_steps", "history_len", "future_len", "stride"])
         self.assertEqual(enumerate_window_end_indices(12, 3, 4, 1), list(range(2, 8)))
         self.assertEqual(enumerate_window_end_indices(12, 3, 4, 2), [2, 4, 6])
+        self.assertEqual(enumerate_window_end_indices(7, 3, 4, 1), [2])
+        self.assertEqual(enumerate_window_end_indices(6, 3, 4, 1), [])
 
-    def test_all_history_and_future_scans_share_prediction_anchors(self):
-        scans = [
-            (73, [(h, 64) for h in range(1, 9)], {"history_len": 8, "future_len": 64}, [7, 8]),
-            (240, [(h, 120) for h in range(1, 9)], {"history_len": 8, "future_len": 120}, list(range(7, 120))),
-            (240, [(6, k) for k in [30, 45, 60, 75, 90, 120, 150, 180]], {"history_len": 6, "future_len": 180}, list(range(5, 60))),
-        ]
-        for steps, variants, reference, expected in scans:
-            for history, future in variants:
-                config = {"seed": 42, "dataset": {"history_len": history, "future_len": future, "window_reference": reference}}
+    def test_h_and_k_naturally_change_training_anchors(self):
+        for history in range(1, 9):
+            for future in [30, 45, 60, 75, 90, 120, 150, 180]:
+                config = {"seed": 42, "dataset": {"history_len": history, "future_len": future}}
                 with patch.dict("datasets.factory.DATASET_REGISTRY", {"synthetic": _SyntheticDataset}):
-                    dataset = build_dataset("synthetic", [Path(str(steps))], "train", config)
+                    dataset = build_dataset("synthetic", [Path("240")], "train", config)
+                expected = list(range(history - 1, 240 - future))
                 self.assertEqual([window.t_end for window in dataset.all_windows], expected)
-                self.assertEqual(len(dataset), len(expected))
+                self.assertEqual(len(dataset), 240 - future - history + 1)
                 self.assertEqual(dataset[0].state_hist.shape[1], history)
                 self.assertEqual(dataset[0].y_future.shape[1], future)
+                torch.testing.assert_close(dataset[0].state_hist[0, :, 0], torch.arange(history).float())
+                torch.testing.assert_close(dataset[0].y_future[0, :, 0], torch.arange(history, history + future).float())
 
-    def test_current_constraints_remain_valid_and_bad_reference_is_rejected(self):
-        self.assertEqual(enumerate_window_end_indices(20, 8, 6, 1, {"history_len": 2, "future_len": 3}), list(range(7, 14)))
-        self.assertEqual(enumerate_window_end_indices(10, 1, 2, 1, {"history_len": 8, "future_len": 8}), [])
-        with self.assertRaisesRegex(ValueError, "window_reference"):
-            enumerate_window_end_indices(10, 1, 2, 1, {"history_len": 0})
+    def test_h_k_and_stride_must_be_positive(self):
+        for history, future, stride in [(0, 2, 1), (2, 0, 1), (2, 3, 0)]:
+            with self.assertRaisesRegex(ValueError, "must be >= 1"):
+                enumerate_window_end_indices(20, history, future, stride)
+
+
+class RolloutIndexingTest(unittest.TestCase):
+    def test_absolute_rollout_start_selects_the_preceding_h_true_states(self):
+        for history, known in [(1, 60), (6, 60), (6, 90), (6, 120)]:
+            with self.subTest(history=history, known=known):
+                dataset = _SyntheticDataset([Path("240")], history, 180, "test")
+                sample = dataset.get_rollout_data(0, start_t=known - 1)
+                history_indices = torch.arange(known - history, known)
+                future_indices = torch.arange(known, 240)
+                torch.testing.assert_close(sample.history_idx[0], history_indices)
+                torch.testing.assert_close(sample.state_hist[0, :, 0], history_indices.float())
+                torch.testing.assert_close(sample.force_hist[0, :, 0], history_indices.float())
+                torch.testing.assert_close(sample.future_idx[0], future_indices)
+                torch.testing.assert_close(sample.y_future[0, :, 0], future_indices.float())
+                torch.testing.assert_close(sample.force_future[0, :, 0], future_indices.float())
+                torch.testing.assert_close(sample.history_time[0], 12 + 2.5 * history_indices.float())
+                torch.testing.assert_close(sample.future_time[0], 12 + 2.5 * future_indices.float())
+                torch.testing.assert_close(sample.t_hist[0], torch.arange(1 - history, 1).float())
+                torch.testing.assert_close(sample.t_future[0], torch.arange(1, 241 - known).float())
+                self.assertEqual(sample.rollout_length.item(), 240 - known)
+
+    def test_k_does_not_limit_rollout_or_require_any_training_windows(self):
+        for future in [30, 60, 180, 240]:
+            with self.subTest(future=future):
+                dataset = _SyntheticDataset([Path("240")], 6, future, "test")
+                sample = dataset.get_rollout_data(0, start_t=59)
+                self.assertEqual(sample.y_future.shape, (3, 180, 3))
+                self.assertEqual(sample.future_idx[0].tolist(), list(range(60, 240)))
+                if future == 240:
+                    self.assertEqual(len(dataset), 0)
+                    self.assertEqual(len(dataset.scenario_infos), 1)
+
+    def test_known_steps_must_include_history_and_leave_a_future(self):
+        dataset = _SyntheticDataset([Path("240")], 6, 30, "test")
+        for known in [0, 5]:
+            with self.subTest(known=known), self.assertRaisesRegex(ValueError, ">= history_len"):
+                dataset.get_rollout_data(0, start_t=known - 1)
+        for known in [240, 241]:
+            with self.subTest(known=known), self.assertRaisesRegex(ValueError, "< trajectory length"):
+                dataset.get_rollout_data(0, start_t=known - 1)
+        self.assertEqual(dataset.get_rollout_data(0, start_t=5).history_idx[0].tolist(), list(range(6)))
+        self.assertEqual(dataset.get_rollout_data(0, start_t=238).future_idx[0].tolist(), [239])
 
 
 class LoaderRepairTest(unittest.TestCase):
-    def test_nonpadding_eval_sampler_has_no_duplicates_or_missing_samples(self):
-        for length in [0, 1, 2, 8, 9, 11, 12]:
-            for world_size in [1, 2, 4]:
-                shards = []
-                for rank in range(world_size):
-                    sampler = DistributedEvaluationSampler(range(length), world_size, rank)
-                    indices = list(sampler)
-                    self.assertEqual(indices, list(range(rank, length, world_size)))
-                    self.assertEqual(len(sampler), len(indices))
-                    shards.extend(indices)
-                self.assertEqual(sorted(shards), list(range(length)))
-                self.assertEqual(len(shards), len(set(shards)))
-
-    def test_loader_uses_nonpadding_sampler_for_evaluation(self):
-        dataset = _SyntheticDataset([Path("12")], 2, 3, "val")
-        with patch("datasets.factory.dist.get_world_size", return_value=3), patch("datasets.factory.dist.get_rank", return_value=1):
+    def test_distributed_loader_is_only_for_training_windows(self):
+        dataset = _SyntheticDataset([Path("12")], 2, 3, "train")
+        with patch("torch.distributed.get_world_size", return_value=3), patch("torch.distributed.get_rank", return_value=1):
             loader = build_loader(dataset, 2, 0, distributed=True, shuffle=False)
-        self.assertIsInstance(loader.sampler, DistributedEvaluationSampler)
+        self.assertIsInstance(loader.sampler, DistributedSampler)
         self.assertEqual(list(loader.sampler), [1, 4, 7])
+        dataset.split = "val"
+        with self.assertRaisesRegex(ValueError, "evaluate complete trajectories directly"):
+            build_loader(dataset, 2, 0, distributed=True, shuffle=False)
 
     def test_persistent_workers_disabled_only_for_training_resampling(self):
         for sampling in [{"windows_per_scenario": 2}, {"epoch_num_windows": 2}]:
@@ -224,6 +263,50 @@ class LoaderRepairTest(unittest.TestCase):
             self.assertTrue(loader.persistent_workers)
         loader = build_loader(dataset, 2, 0, False, False, persistent_workers=True)
         self.assertFalse(loader.persistent_workers)
+
+
+class TemporalAuditTest(unittest.TestCase):
+    def setUp(self):
+        self.config = {
+            "dataset": {"name": "issm", "data_dir": "/data/ISSM/PIG_5000", "history_len": 1, "future_len": 180},
+            "evaluation": {"known_steps": 60},
+            "model": {"relative_time_scale": 180.0},
+            "training": {"train_horizon_min": 24, "train_horizon_max": None},
+        }
+
+    def test_canonical_protocols_and_null_horizon_max(self):
+        validate_main_protocol(self.config, "issm")
+        semantics = validate_temporal_settings(self.config, {"simulation": 240})
+        self.assertEqual(semantics["target_train_horizon_max"], 180)
+        self.assertEqual(semantics["history_indices"], [59])
+        self.assertEqual(semantics["rollout_lengths"], [180])
+        self.config["dataset"].update(name="anuga", history_len=1, future_len=64)
+        self.config["evaluation"]["known_steps"] = 8
+        self.config["model"]["relative_time_scale"] = 65
+        validate_main_protocol(self.config, "anuga")
+        self.assertEqual(validate_temporal_settings(self.config, {"simulation": 73})["rollout_lengths"], [65])
+
+    def test_training_k_and_rollout_start_are_independent(self):
+        self.config["dataset"].update(history_len=6, future_len=30)
+        for known in [60, 90, 120]:
+            self.config["evaluation"]["known_steps"] = known
+            result = validate_temporal_settings(self.config, {"simulation": 240})
+            self.assertEqual(result["target_train_horizon_max"], 30)
+            self.assertEqual(result["rollout_lengths"], [240 - known])
+            self.assertEqual(result["relative_time_scale"], 180)
+
+    def test_invalid_temporal_settings_are_rejected(self):
+        for section, key, value, message in [
+            ("dataset", "history_len", 61, "known_steps"),
+            ("evaluation", "known_steps", 240, "trajectory length"),
+            ("dataset", "future_len", 23, "train_horizon_min"),
+            ("training", "train_horizon_max", 181, "train_horizon_max"),
+            ("training", "train_horizon_max", 23, "train_horizon_max"),
+        ]:
+            invalid = deepcopy(self.config)
+            invalid[section][key] = value
+            with self.subTest(key=key, value=value), self.assertRaisesRegex(ValueError, message):
+                validate_temporal_settings(invalid, {"simulation": 240})
 
 
 if __name__ == "__main__":

@@ -1,0 +1,11 @@
+dataset:
+  history_len: 1
+  future_len: 180
+model:
+  relative_time_scale: 180.0
+training:
+  batch_size: 8
+  train_horizon_min: 24
+  loss_scale_factor: 100.0
+evaluation:
+  known_steps: 60

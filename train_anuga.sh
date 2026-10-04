@@ -6,12 +6,12 @@ cd "$PROJECT_ROOT"
 
 SESSION_NAME="${SESSION_NAME:-anuga_node2}"
 NPROC="${NPROC:-4}"
-MODEL_CONFIG="${MODEL_CONFIG:-configs/model_node2.yaml}"
+DATASET_CONFIG="${DATASET_CONFIG:-configs/datasets/anuga.yaml}"
+PROTOCOL_CONFIG="${PROTOCOL_CONFIG:-configs/protocols/anuga/main.yaml}"
+MODEL_CONFIG="${MODEL_CONFIG:-configs/models/node2.yaml}"
+RUNTIME_CONFIG="${RUNTIME_CONFIG-configs/runtime/fast.yaml}"
 EXTRA_CONFIGS="${EXTRA_CONFIGS:-}"
 TRAIN_ARGS="${TRAIN_ARGS:-}"
-BASE_CONFIG="${BASE_CONFIG:-configs/ANUGA_History_Scan/base_ANUGA_history1.yaml}"
-DATASET_CONFIG="${DATASET_CONFIG-configs/anuga.yaml}"
-LOADER_CONFIG="${LOADER_CONFIG-}"
 PYTHON_BIN="${PYTHON_BIN:-$(command -v python)}"
 STAMP="${STAMP:-$(date -u +%Y%m%d_%H%M%S)}"
 RUN_NAME="${RUN_NAME:-anuga_node2_${STAMP}}"
@@ -27,10 +27,9 @@ run_training() {
     echo "[$(date -u +%F' '%T)] session_name=$SESSION_NAME"
     echo "[$(date -u +%F' '%T)] run_name=$RUN_NAME"
     echo "[$(date -u +%F' '%T)] python_bin=$PYTHON_BIN"
-    echo "[$(date -u +%F' '%T)] base_config=$BASE_CONFIG"
     echo "[$(date -u +%F' '%T)] dataset_config=${DATASET_CONFIG:-<none>}"
     echo "[$(date -u +%F' '%T)] model_config=$MODEL_CONFIG"
-    echo "[$(date -u +%F' '%T)] loader_config=${LOADER_CONFIG:-<none>}"
+    echo "[$(date -u +%F' '%T)] runtime_config=${RUNTIME_CONFIG:-<none>}"
     echo "[$(date -u +%F' '%T)] extra_configs=${EXTRA_CONFIGS:-<none>}"
     echo "[$(date -u +%F' '%T)] train_args=${TRAIN_ARGS:-<none>}"
     echo "[$(date -u +%F' '%T)] log_file=$LOG_FILE"
@@ -43,18 +42,17 @@ run_training() {
     "$PYTHON_BIN" -m torch.distributed.run
     --nproc_per_node="$NPROC"
     scripts/train.py
-    --config "$BASE_CONFIG"
+    --config configs/default.yaml
+    --config "$DATASET_CONFIG"
+    --config "$PROTOCOL_CONFIG"
+    --config "$MODEL_CONFIG"
   )
-  if [[ -n "$DATASET_CONFIG" ]]; then
-    train_cmd+=(--config "$DATASET_CONFIG")
-  fi
-  train_cmd+=(--config "$MODEL_CONFIG")
-  if [[ -n "$LOADER_CONFIG" ]]; then
-    train_cmd+=(--config "$LOADER_CONFIG")
-  fi
   for extra_config in $EXTRA_CONFIGS; do
     train_cmd+=(--config "$extra_config")
   done
+  if [[ -n "$RUNTIME_CONFIG" ]]; then
+    train_cmd+=(--config "$RUNTIME_CONFIG")
+  fi
   train_cmd+=(--run-name "$RUN_NAME")
   for train_arg in $TRAIN_ARGS; do
     train_cmd+=("$train_arg")
@@ -80,7 +78,7 @@ if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
   exit 1
 fi
 
-export PROJECT_ROOT SESSION_NAME NPROC DATASET_CONFIG MODEL_CONFIG LOADER_CONFIG EXTRA_CONFIGS TRAIN_ARGS BASE_CONFIG PYTHON_BIN STAMP RUN_NAME LOG_DIR LOG_FILE
+export PROJECT_ROOT SESSION_NAME NPROC DATASET_CONFIG PROTOCOL_CONFIG MODEL_CONFIG RUNTIME_CONFIG EXTRA_CONFIGS TRAIN_ARGS PYTHON_BIN STAMP RUN_NAME LOG_DIR LOG_FILE
 tmux new-session -d -s "$SESSION_NAME" "cd '$PROJECT_ROOT' && bash '$PROJECT_ROOT/train_anuga.sh' --inside-tmux"
 
 echo "Started tmux session: $SESSION_NAME"

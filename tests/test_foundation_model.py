@@ -78,50 +78,23 @@ class FoundationModelTest(unittest.TestCase):
         for dataset, scale in (("issm", 180.0), ("anuga", 65.0)):
             with self.subTest(dataset=dataset):
                 config = load_config_bundle([
-                    PROJECT_ROOT / "configs/base_sample.yaml",
-                    PROJECT_ROOT / f"configs/{dataset}.yaml",
-                    PROJECT_ROOT / "configs/model_node2.yaml",
+                    PROJECT_ROOT / "configs/default.yaml",
+                    PROJECT_ROOT / f"configs/datasets/{dataset}.yaml",
+                    PROJECT_ROOT / f"configs/protocols/{dataset}/main.yaml",
+                    PROJECT_ROOT / "configs/models/node2.yaml",
                 ])
                 self.assertEqual(config["model"]["relative_time_scale"], scale)
                 self.assertTrue(config["model"]["use_relative_time"])
                 self.assertEqual(config["evaluation"]["amp_mode"], "none")
                 self.assertEqual(config["evaluation"]["checkpoint_metric"], "whole_rollout_norm_rmse")
 
-    def test_formal_scan_configs_share_prediction_anchors(self) -> None:
-        for directory, total_steps, expected_count in (
-            ("ANUGA_History_Scan", 73, 2),
-            ("ISSM_History_Scan", 240, 113),
-            ("ISSM_Future_Len_Ablation", 240, 55),
-        ):
-            reference_anchors = None
-            paths = sorted((PROJECT_ROOT / "configs" / directory).glob("base_*.yaml"))
-            self.assertEqual(len(paths), 8)
-            for path in paths:
-                with self.subTest(config=path.name):
-                    config = load_yaml(path)
-                    dataset = config["dataset"]
-                    anchors = enumerate_window_end_indices(
-                        total_steps, dataset["history_len"], dataset["future_len"],
-                        dataset["stride"], dataset["window_reference"],
-                    )
-                    self.assertEqual(len(anchors), expected_count)
-                    if reference_anchors is None:
-                        reference_anchors = anchors
-                    self.assertEqual(anchors, reference_anchors)
-                    self.assertEqual(config["evaluation"]["amp_mode"], "none")
-                    self.assertEqual(config["evaluation"]["checkpoint_metric"], "whole_rollout_norm_rmse")
-                    self.assertNotIn("use_adjoint", config["solver"])
-
-    def test_paper_matched_config_observes_only_initial_state(self) -> None:
-        config = load_yaml(PROJECT_ROOT / "configs/issm_paper_matched.yaml")
-        dataset = config["dataset"]
-        self.assertEqual(dataset["history_len"], 1)
-        self.assertEqual(enumerate_window_end_indices(240, 1, dataset["future_len"], 1), [0])
-        self.assertEqual(config["evaluation"]["full_rollout_known_steps"], 1)
-        self.assertEqual(config["model"]["relative_time_scale"], 239.0)
-        self.assertEqual(dataset["split"], {
-            "strategy": "issm_rate_modulo", "modulo": 20, "val_remainder": 0, "test_remainder": 10,
-        })
+    def test_history_and_future_variants_have_natural_training_anchors(self) -> None:
+        h1 = enumerate_window_end_indices(240, 1, 180, 1)
+        h8 = enumerate_window_end_indices(240, 8, 180, 1)
+        k30 = enumerate_window_end_indices(240, 1, 30, 1)
+        self.assertEqual(h1, list(range(60)))
+        self.assertEqual(h8, list(range(7, 60)))
+        self.assertEqual(k30, list(range(210)))
 
 
 if __name__ == "__main__":

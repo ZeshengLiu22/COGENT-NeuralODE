@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import re
 from pathlib import Path
 from typing import Any
@@ -11,6 +12,8 @@ import numpy as np
 import torch
 
 from .io import save_json
+
+SCENARIO_FIELDS = frozenset({"scenario_id", "sim_id", "known_steps", "history_len", "mesh_signature", "normalization_signature"})
 
 
 def infer_state_channel_names(dataset_name: str, state_dim: int) -> list[str]:
@@ -140,6 +143,20 @@ def _build_leadtime_summary_rows(
     ]
 
 
+def _mesh_signature(trajectory) -> str:
+    """Identify node ordering and topology independently of normalization/paths."""
+    digest = hashlib.sha256()
+    for name in ("x_static", "edge_index", "edge_attr"):
+        value = getattr(trajectory, name, None)
+        digest.update(name.encode("ascii"))
+        if value is not None:
+            array = np.ascontiguousarray(value)
+            digest.update(str(array.shape).encode("ascii"))
+            digest.update(array.dtype.str.encode("ascii"))
+            digest.update(array.tobytes())
+    return digest.hexdigest()
+
+
 def _empty_bundle() -> dict[str, list[np.ndarray]]:
     return {
         "pred_norm": [],
@@ -157,6 +174,12 @@ def _empty_bundle() -> dict[str, list[np.ndarray]]:
         "history_end_idx0": [],
         "history_end_idx1": [],
         "history_end_time": [],
+        "scenario_id": [],
+        "sim_id": [],
+        "known_steps": [],
+        "history_len": [],
+        "mesh_signature": [],
+        "normalization_signature": [],
     }
 
 
@@ -189,10 +212,10 @@ def _append_prediction_rows(
     bundle["trajectory_idx1"].append(np.tile(future_idx0.astype(np.int64, copy=False) + 1, node_count))
     bundle["horizon_idx0"].append(np.tile(horizon_idx0, node_count))
     bundle["horizon_idx1"].append(np.tile(horizon_idx0 + 1, node_count))
-    bundle["trajectory_time"].append(np.tile(future_time.astype(np.float32, copy=False), node_count))
+    bundle["trajectory_time"].append(np.tile(future_time.astype(np.float64, copy=False), node_count))
     bundle["history_end_idx0"].append(np.full(flat_count, history_end_idx0, dtype=np.int64))
     bundle["history_end_idx1"].append(np.full(flat_count, history_end_idx0 + 1, dtype=np.int64))
-    bundle["history_end_time"].append(np.full(flat_count, history_end_time, dtype=np.float32))
+    bundle["history_end_time"].append(np.full(flat_count, history_end_time, dtype=np.float64))
 
 
 def _finalize_bundle(bundle: dict[str, list[np.ndarray]], state_dim: int) -> dict[str, np.ndarray]:
@@ -221,73 +244,35 @@ def _finalize_bundle(bundle: dict[str, list[np.ndarray]], state_dim: int) -> dic
 
 
 @torch.no_grad()
-def collect_window_prediction_bundle(model: torch.nn.Module, loader, normalizer, device: torch.device) -> dict[str, np.ndarray]:
-    """Collect fixed-window predictions and metadata in normalized and physical units."""
-
-    model.eval()
-    first_sample = loader.dataset[0]
-    state_dim = int(first_sample.y_future.shape[-1])
-    bundle = _empty_bundle()
-    sample_index = 0
-
-    for batch in loader:
-        batch = batch.to(device)
-        y_pred = model(batch)
-        if not torch.isfinite(y_pred).all():
-            raise FloatingPointError("Non-finite model outputs encountered during fixed-window prediction collection.")
-
-        y_pred_norm = y_pred.float()
-        y_true_norm = batch.y_future.float()
-        y_pred_phys = normalizer.inverse_state(y_pred_norm)
-        y_true_phys = normalizer.inverse_state(y_true_norm)
-
-        ptr = batch.ptr.detach().cpu().numpy()
-        scenario_indices = batch.scenario_idx.detach().cpu().numpy().reshape(-1)
-        history_end_idx0 = batch.t_idx.detach().cpu().numpy().reshape(-1)
-        history_end_time = batch.t_value.detach().cpu().numpy().reshape(-1)
-        future_idx = batch.future_idx.detach().cpu().numpy()
-        future_time = batch.future_time.detach().cpu().numpy()
-
-        for graph_index in range(batch.num_graphs):
-            start = int(ptr[graph_index])
-            end = int(ptr[graph_index + 1])
-            _append_prediction_rows(
-                bundle,
-                pred_norm=y_pred_norm[start:end].detach().cpu().numpy(),
-                target_norm=y_true_norm[start:end].detach().cpu().numpy(),
-                pred_phys=y_pred_phys[start:end].detach().cpu().numpy(),
-                target_phys=y_true_phys[start:end].detach().cpu().numpy(),
-                sample_index=sample_index,
-                scenario_index=int(scenario_indices[graph_index]),
-                history_end_idx0=int(history_end_idx0[graph_index]),
-                history_end_time=float(history_end_time[graph_index]),
-                future_idx0=np.asarray(future_idx[graph_index]).reshape(-1),
-                future_time=np.asarray(future_time[graph_index]).reshape(-1),
-            )
-            sample_index += 1
-
-    return _finalize_bundle(bundle, state_dim=state_dim)
-
-
-@torch.no_grad()
 def collect_full_rollout_prediction_bundle(
     model: torch.nn.Module,
     dataset,
     normalizer,
     device: torch.device,
     *,
-    start_t: int | None = None,
+    known_steps: int,
 ) -> dict[str, np.ndarray]:
     """Collect full-rollout predictions and metadata in normalized and physical units."""
 
     model.eval()
+    if not dataset.scenario_infos:
+        raise ValueError("Rollout collection requires at least one scenario.")
+    known_steps = int(known_steps)
+    if known_steps < dataset.history_len:
+        raise ValueError("known_steps must be >= history_len.")
+    if any(known_steps >= int(info["length"]) for info in dataset.scenario_infos):
+        raise ValueError("known_steps must be < every trajectory length.")
+    start_t = known_steps - 1
     first_sample = dataset.get_rollout_data(0, start_t=start_t)
     state_dim = int(first_sample.y_future.shape[-1])
     bundle = _empty_bundle()
+    state_statistics = np.concatenate((normalizer.state_mean.cpu().numpy(), normalizer.state_std.cpu().numpy()))
+    normalization_signature = hashlib.sha256(np.ascontiguousarray(state_statistics).tobytes()).hexdigest()
 
     for sample_index in range(len(dataset.scenario_infos)):
         sample = dataset.get_rollout_data(sample_index, start_t=start_t).to(device)
-        y_pred = model(sample)
+        prediction_model = model.module if isinstance(model, torch.nn.parallel.DistributedDataParallel) else model
+        y_pred = prediction_model(sample)
         if not torch.isfinite(y_pred).all():
             raise FloatingPointError("Non-finite model outputs encountered during full-rollout prediction collection.")
 
@@ -296,6 +281,18 @@ def collect_full_rollout_prediction_bundle(
         y_pred_phys = normalizer.inverse_state(y_pred_norm)
         y_true_phys = normalizer.inverse_state(y_true_norm)
 
+        info = dataset.scenario_infos[sample_index]
+        trajectory = dataset._get_trajectory(sample_index, cache=dataset.cache_in_memory)
+        mesh_signature = _mesh_signature(trajectory)
+        for name, value in (
+            ("scenario_id", str(info["scenario_id"])),
+            ("sim_id", str(info.get("sim_id", ""))),
+            ("known_steps", known_steps),
+            ("history_len", int(dataset.history_len)),
+            ("mesh_signature", mesh_signature),
+            ("normalization_signature", normalization_signature),
+        ):
+            bundle[name].append(np.asarray([value]))
         _append_prediction_rows(
             bundle,
             pred_norm=y_pred_norm.detach().cpu().numpy(),
@@ -320,120 +317,84 @@ def validate_full_rollout_bundle(
     known_steps: int,
     node_counts: list[int],
 ) -> dict[str, Any]:
-    """Verify that every future timestep contains one prediction per node."""
-
-    known_steps = int(known_steps)
-    if len(node_counts) != len(scenario_infos):
-        raise ValueError(
-            f"Expected one node count per scenario, got {len(node_counts)} counts "
-            f"for {len(scenario_infos)} scenarios."
-        )
-
-    required_fields = (
-        "pred_norm",
-        "target_norm",
-        "pred_phys",
-        "target_phys",
-        "scenario_index",
-        "node_index",
-        "trajectory_idx0",
-        "horizon_idx0",
-    )
-    missing_fields = [name for name in required_fields if name not in bundle]
-    if missing_fields:
-        raise KeyError(f"Full-rollout bundle is missing required fields: {missing_fields}")
-
-    row_count = int(bundle["scenario_index"].shape[0])
-    mismatched_fields = [
-        name
-        for name in required_fields
-        if int(bundle[name].shape[0]) != row_count
-    ]
-    if mismatched_fields:
-        raise ValueError(
-            f"Full-rollout bundle fields do not share the same row count ({row_count}): "
-            f"{mismatched_fields}"
-        )
-
-    scenario_rows: list[dict[str, Any]] = []
-    for scenario_index, (info, node_count_value) in enumerate(zip(scenario_infos, node_counts)):
-        total_steps = int(info["length"])
-        node_count = int(node_count_value)
-        rollout_steps = total_steps - known_steps
-        if rollout_steps < 1:
-            raise ValueError(
-                f"Scenario {info['scenario_id']} has {total_steps} steps, which does not leave "
-                f"a future timestep after known_steps={known_steps}."
-            )
-        if node_count < 1:
-            raise ValueError(f"Scenario {info['scenario_id']} has invalid node_count={node_count}.")
-
-        scenario_mask = bundle["scenario_index"] == scenario_index
-        expected_rows = rollout_steps * node_count
-        actual_rows = int(np.count_nonzero(scenario_mask))
-        if actual_rows != expected_rows:
-            raise ValueError(
-                f"Scenario {info['scenario_id']} has {actual_rows} saved prediction rows; "
-                f"expected {expected_rows} ({rollout_steps} timesteps x {node_count} nodes)."
-            )
-
-        trajectory_idx0 = bundle["trajectory_idx0"][scenario_mask].astype(np.int64, copy=False)
-        horizon_idx0 = bundle["horizon_idx0"][scenario_mask].astype(np.int64, copy=False)
-        node_index = bundle["node_index"][scenario_mask].astype(np.int64, copy=False)
-        if (
-            int(trajectory_idx0.min()) != known_steps
-            or int(trajectory_idx0.max()) != total_steps - 1
-        ):
-            raise ValueError(
-                f"Scenario {info['scenario_id']} does not span the expected absolute trajectory "
-                f"indices {known_steps}..{total_steps - 1}."
-            )
-        if int(horizon_idx0.min()) != 0 or int(horizon_idx0.max()) != rollout_steps - 1:
-            raise ValueError(
-                f"Scenario {info['scenario_id']} does not span horizon indices "
-                f"0..{rollout_steps - 1}."
-            )
-        if int(node_index.min()) != 0 or int(node_index.max()) != node_count - 1:
-            raise ValueError(
-                f"Scenario {info['scenario_id']} does not span node indices 0..{node_count - 1}."
-            )
-
-        trajectory_counts = np.bincount(trajectory_idx0 - known_steps, minlength=rollout_steps)
-        horizon_counts = np.bincount(horizon_idx0, minlength=rollout_steps)
-        if trajectory_counts.shape[0] != rollout_steps or not np.all(trajectory_counts == node_count):
-            raise ValueError(
-                f"Scenario {info['scenario_id']} is missing one or more node predictions at an "
-                "absolute trajectory timestep."
-            )
-        if horizon_counts.shape[0] != rollout_steps or not np.all(horizon_counts == node_count):
-            raise ValueError(
-                f"Scenario {info['scenario_id']} is missing one or more node predictions at a "
-                "rollout horizon timestep."
-            )
-
-        scenario_rows.append(
-            {
-                "scenario_index": scenario_index,
-                "scenario_id": str(info["scenario_id"]),
-                "total_steps": total_steps,
-                "known_steps": known_steps,
-                "rollout_steps": rollout_steps,
-                "node_count": node_count,
-                "first_prediction_idx0": known_steps,
-                "last_prediction_idx0": total_steps - 1,
-                "saved_rows": actual_rows,
-            }
-        )
-
-    rollout_lengths = [row["rollout_steps"] for row in scenario_rows]
-    return {
-        "complete": True,
-        "scenario_count": len(scenario_rows),
-        "known_steps": known_steps,
-        "min_rollout_steps": min(rollout_lengths),
-        "max_rollout_steps": max(rollout_lengths),
-        "scenarios": scenario_rows,
-    }
+    """Require exactly one finite prediction for every scenario/node/future index."""
+    if not scenario_infos or len(node_counts) != len(scenario_infos):
+        raise ValueError("Expected nonempty scenarios and one node count per scenario.")
+    required = set(_empty_bundle())
+    missing = required.difference(bundle)
+    if missing:
+        raise ValueError(f"Rollout bundle is missing required fields: {sorted(missing)}")
+    row_count = len(bundle["scenario_index"])
+    if any(len(bundle[key]) != row_count for key in required - SCENARIO_FIELDS):
+        raise ValueError("Rollout row fields must share the same row count.")
+    if any(len(bundle[key]) != len(scenario_infos) for key in SCENARIO_FIELDS):
+        raise ValueError("Rollout scenario fields must contain one entry per scenario.")
+    shape = bundle["pred_phys"].shape
+    if len(shape) != 2 or shape[1] < 1:
+        raise ValueError("Predictions must have shape [rows, channels].")
+    for key in ("pred_phys", "target_phys", "pred_norm", "target_norm"):
+        if bundle[key].shape != shape or not np.isfinite(bundle[key]).all():
+            raise ValueError(f"Invalid shape or non-finite values in {key}.")
+    for key in ("trajectory_time", "history_end_time"):
+        if not np.isfinite(bundle[key]).all():
+            raise ValueError(f"Non-finite actual times in {key}.")
+    for key in ("scenario_index", "sample_index", "node_index", "trajectory_idx0", "trajectory_idx1",
+                "horizon_idx0", "horizon_idx1", "history_end_idx0", "history_end_idx1", "history_len", "known_steps"):
+        if not np.issubdtype(bundle[key].dtype, np.integer) or bundle[key].ndim != 1:
+            raise ValueError(f"{key} must contain integer indices.")
+    if set(np.unique(bundle["scenario_index"])) != set(range(len(scenario_infos))):
+        raise ValueError("Scenario indices do not match the metadata scenarios.")
+    ids = [str(info["scenario_id"]) for info in scenario_infos]
+    if len(set(ids)) != len(ids):
+        raise ValueError("Scenario IDs must be unique for unambiguous alignment.")
+    rows = []
+    for scenario_index, (info, node_count) in enumerate(zip(scenario_infos, node_counts)):
+        total_steps, node_count = int(info["length"]), int(node_count)
+        steps = total_steps - known_steps
+        mask = bundle["scenario_index"] == scenario_index
+        if steps < 1 or node_count < 1 or int(mask.sum()) != steps * node_count:
+            raise ValueError(f"Scenario {info['scenario_id']} has incomplete rollout coverage.")
+        nodes = bundle["node_index"][mask]
+        absolute = bundle["trajectory_idx0"][mask]
+        lead = bundle["horizon_idx0"][mask]
+        if (np.any(nodes < 0) or np.any(nodes >= node_count)
+                or np.any(absolute < known_steps) or np.any(absolute >= total_steps)
+                or not np.array_equal(lead, absolute - known_steps)):
+            raise ValueError(f"Scenario {info['scenario_id']} has inconsistent node/time/lead indices.")
+        pairs = nodes * steps + lead
+        if not np.array_equal(np.sort(pairs), np.arange(node_count * steps)):
+            raise ValueError(f"Scenario {info['scenario_id']} has duplicate or missing node/time predictions.")
+        for key, value in (("scenario_id", str(info["scenario_id"])),
+                           ("sim_id", str(info.get("sim_id", ""))), ("known_steps", known_steps)):
+            if bundle[key][scenario_index] != value:
+                raise ValueError(f"Scenario {info['scenario_id']} has inconsistent {key}.")
+        for key, value in (("sample_index", scenario_index), ("history_end_idx0", known_steps - 1),
+                           ("history_end_idx1", known_steps)):
+            if not np.all(bundle[key][mask] == value):
+                raise ValueError(f"Scenario {info['scenario_id']} has inconsistent {key}.")
+        history = int(bundle["history_len"][scenario_index])
+        if not 1 <= history <= known_steps:
+            raise ValueError("history_len must be positive and <= known_steps.")
+        for key in ("mesh_signature", "normalization_signature"):
+            if not re.fullmatch(r"[a-f0-9]{64}", str(bundle[key][scenario_index])):
+                raise ValueError(f"Invalid or missing {key}.")
+        if (not np.array_equal(bundle["trajectory_idx1"][mask], absolute + 1)
+                or not np.array_equal(bundle["horizon_idx1"][mask], lead + 1)):
+            raise ValueError("Inconsistent one-based indices.")
+        order = np.argsort(pairs)
+        times = bundle["trajectory_time"][mask][order].reshape(node_count, steps)
+        anchors = bundle["history_end_time"][mask]
+        if (not np.array_equal(times, np.broadcast_to(times[0], times.shape))
+                or np.any(np.diff(times[0]) <= 0) or len(np.unique(anchors)) != 1
+                or times[0, 0] <= anchors[0]):
+            raise ValueError("Inconsistent or nonincreasing actual trajectory times.")
+        rows.append({"scenario_index": scenario_index, "scenario_id": str(info["scenario_id"]),
+                     "total_steps": total_steps, "known_steps": known_steps, "history_len": history,
+                     "rollout_steps": steps, "node_count": node_count, "saved_rows": int(mask.sum()),
+                     "first_prediction_idx0": known_steps, "last_prediction_idx0": total_steps - 1})
+    return {"complete": True, "scenario_count": len(rows), "known_steps": known_steps,
+            "min_rollout_steps": min(row["rollout_steps"] for row in rows),
+            "max_rollout_steps": max(row["rollout_steps"] for row in rows), "scenarios": rows}
 
 
 def _error_sums(pred: np.ndarray, target: np.ndarray) -> tuple[np.ndarray, np.ndarray, int]:
@@ -516,8 +477,8 @@ def _overall_curve(diff: np.ndarray, index_values: np.ndarray) -> list[float]:
     diff64 = diff.astype(np.float64)
     np.add.at(sq_sum, index_values, np.square(diff64).sum(axis=1))
     np.add.at(count, index_values, float(diff.shape[1]))
-    safe = np.maximum(count, 1.0)
-    return np.sqrt(sq_sum / safe).tolist()
+    available = count > 0
+    return np.sqrt(sq_sum[available] / count[available]).tolist()
 
 
 def _indexed_metric_rows(
@@ -605,26 +566,6 @@ def _leadtime_metric_rows(bundle: dict[str, np.ndarray], channel_names: list[str
     )
 
 
-def summarize_window_bundle(bundle: dict[str, np.ndarray], channel_names: list[str]) -> dict[str, Any]:
-    """Summarize a fixed-window prediction bundle."""
-
-    metrics, table_rows = _metric_rows_and_values(
-        scope="window",
-        pred_phys=bundle["pred_phys"],
-        target_phys=bundle["target_phys"],
-        pred_norm=bundle["pred_norm"],
-        target_norm=bundle["target_norm"],
-        channel_names=channel_names,
-        metric_prefix="",
-    )
-    return {
-        "metrics": metrics,
-        "metric_table": table_rows,
-        "trajectory_metrics": _trajectory_metric_rows(bundle, channel_names),
-        "leadtime_metrics": _leadtime_metric_rows(bundle, channel_names),
-    }
-
-
 def summarize_full_rollout_bundle(
     bundle: dict[str, np.ndarray],
     channel_names: list[str],
@@ -661,8 +602,9 @@ def summarize_full_rollout_bundle(
         metric_prefix="final_step_",
     )
     metrics.update(final_metrics)
-    metrics["horizon_rmse_curve"] = _overall_curve(bundle["pred_phys"] - bundle["target_phys"], bundle["horizon_idx0"])
-    metrics["horizon_norm_rmse_curve"] = _overall_curve(bundle["pred_norm"] - bundle["target_norm"], bundle["horizon_idx0"])
+    metrics["horizon_lead_steps"] = (np.unique(bundle["horizon_idx0"]) + 1).tolist()
+    metrics["horizon_rmse_curve"] = _overall_curve(bundle["pred_phys"].astype(np.float64) - bundle["target_phys"].astype(np.float64), bundle["horizon_idx0"])
+    metrics["horizon_norm_rmse_curve"] = _overall_curve(bundle["pred_norm"].astype(np.float64) - bundle["target_norm"].astype(np.float64), bundle["horizon_idx0"])
     leadtime_metrics = _truncate_index_rows(
         _leadtime_metric_rows(bundle, channel_names),
         index1_key="leadtime_idx1",
@@ -880,7 +822,10 @@ def save_evaluation_artifacts(
 ) -> dict[str, str]:
     """Persist predictions, summaries, tables, and trajectory plots for evaluation."""
 
+    if mode != "full_rollout":
+        raise ValueError("Only full_rollout evaluation artifacts are supported.")
     artifact_stem = Path(artifact_stem)
+    artifact_stem.parent.mkdir(parents=True, exist_ok=True)
     metrics_path = Path(f"{artifact_stem}_metrics.json")
     predictions_path = Path(f"{artifact_stem}_predictions.npz")
     predictions_meta_path = Path(f"{artifact_stem}_predictions_meta.json")
@@ -895,6 +840,11 @@ def save_evaluation_artifacts(
     leadtime_mae_curve_csv_path = Path(f"{artifact_stem}_leadtime_mae_curve.csv")
     leadtime_mae_curve_npz_path = Path(f"{artifact_stem}_leadtime_mae_curve.npz")
 
+    validate_full_rollout_bundle(
+        bundle, scenario_infos=scenario_infos, known_steps=int(bundle["known_steps"][0]),
+        node_counts=[int(np.unique(bundle["node_index"][bundle["scenario_index"] == i]).size)
+                     for i in range(len(scenario_infos))],
+    )
     np.savez_compressed(predictions_path, **bundle)
 
     scenario_lookup = []
@@ -903,7 +853,12 @@ def save_evaluation_artifacts(
             {
                 "scenario_index": scenario_index,
                 "scenario_id": info["scenario_id"],
-                "sim_id": info["sim_id"],
+                "sim_id": str(info.get("sim_id", "")),
+                "known_steps": int(bundle["known_steps"][scenario_index]),
+                "history_len": int(bundle["history_len"][scenario_index]),
+                "node_count": int(np.unique(bundle["node_index"][bundle["scenario_index"] == scenario_index]).size),
+                "mesh_signature": str(bundle["mesh_signature"][scenario_index]),
+                "normalization_signature": str(bundle["normalization_signature"][scenario_index]),
                 "length": info["length"],
                 "path": str(info["path"]),
             }
@@ -911,11 +866,18 @@ def save_evaluation_artifacts(
     save_json(
         predictions_meta_path,
         {
+            "schema_version": 2,
             "dataset_name": dataset_name,
+            "known_steps": int(bundle["known_steps"][0]),
+            "history_len": int(bundle["history_len"][0]),
+            "time_coordinate_source": "TrajectoryData.times; original adapter units",
+            "time_semantics": "trajectory_time preserves the adapter-provided coordinate, never normalized relative solver time; ISSM cell trajectories use snapshot indices and ANUGA uses supplied simulation time",
             "split": split,
             "mode": mode,
             "channel_names": channel_names,
-            "row_format": "Each row in the NPZ arrays corresponds to one (sample_index, node_index, trajectory_idx) point with all state channels stored across columns.",
+            "row_format": "Prediction row arrays describe one (scenario_index, node_index, trajectory_idx0) with all state channels across columns.",
+            "scenario_fields": sorted(SCENARIO_FIELDS),
+            "scenario_format": "scenario_id, sim_id, known_steps, history_len, mesh_signature and normalization_signature contain one entry per scenario, indexed by scenario_index.",
             "scenario_lookup": scenario_lookup,
             "evaluation_metadata": metadata or {},
         },
@@ -924,8 +886,6 @@ def save_evaluation_artifacts(
     _write_csv(metric_table_path, summary["metric_table"])
     _write_csv(trajectory_metrics_path, summary["trajectory_metrics"])
     trajectory_title = f"{dataset_name.upper()} {split} {mode.replace('_', ' ').title()}"
-    if mode == "fixed_window":
-        trajectory_title = f"{trajectory_title} Absolute Trajectory"
     _plot_trajectory_metrics(
         trajectory_plot_path,
         summary["trajectory_metrics"],

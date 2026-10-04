@@ -3,8 +3,6 @@
 import logging
 from pathlib import Path
 
-import torch.distributed as dist
-from torch.utils.data import Sampler
 from torch.utils.data.distributed import DistributedSampler
 from torch_geometric.loader import DataLoader
 
@@ -15,23 +13,6 @@ from .split_utils import discover_files, issm_rate_modulo_split, random_split
 
 
 DATASET_REGISTRY = {"anuga": ANUGADataset, "adcirc": ADCIRCDataset, "issm": ISSMDataset}
-
-
-class DistributedEvaluationSampler(Sampler[int]):
-    """Shard evaluation indices exactly once globally, without padding."""
-
-    def __init__(self, dataset, num_replicas: int | None = None, rank: int | None = None) -> None:
-        self.dataset = dataset
-        self.num_replicas = dist.get_world_size() if num_replicas is None else int(num_replicas)
-        self.rank = dist.get_rank() if rank is None else int(rank)
-        if self.num_replicas < 1 or not 0 <= self.rank < self.num_replicas:
-            raise ValueError("Distributed evaluation requires num_replicas >= 1 and 0 <= rank < num_replicas.")
-
-    def __iter__(self):
-        return iter(range(self.rank, len(self.dataset), self.num_replicas))
-
-    def __len__(self) -> int:
-        return len(range(self.rank, len(self.dataset), self.num_replicas))
 
 
 def build_splits(config: dict) -> tuple[list[Path], list[Path], list[Path]]:
@@ -64,16 +45,14 @@ def build_dataset(
     config: dict,
     normalizer=None,
     *,
-    history_len: int | None = None,
-    future_len: int | None = None,
     sample_windows: bool = False,
 ):
     dataset_cfg = config["dataset"]
     sampling_cfg = dataset_cfg.get("sampled_windows", {}) if sample_windows else {}
     return DATASET_REGISTRY[dataset_name](
         scenario_files=files,
-        history_len=dataset_cfg["history_len"] if history_len is None else history_len,
-        future_len=dataset_cfg["future_len"] if future_len is None else future_len,
+        history_len=dataset_cfg["history_len"],
+        future_len=dataset_cfg["future_len"],
         split=split,
         stride=dataset_cfg.get("stride", 1),
         normalizer=normalizer,
@@ -82,7 +61,6 @@ def build_dataset(
         windows_per_scenario=sampling_cfg.get("windows_per_scenario"),
         seed=dataset_cfg.get("seed", config["seed"]),
         adapter_kwargs=dataset_cfg.get(dataset_name, {}),
-        window_reference=dataset_cfg.get("window_reference"),
     )
 
 
@@ -96,9 +74,13 @@ def build_loader(
     prefetch_factor: int | None = None,
     persistent_workers: bool = False,
 ):
+    """Construct a training-window loader; formal evaluation reads trajectories."""
+
     sampler = None
     if distributed:
-        sampler = DistributedSampler(dataset, shuffle=True) if shuffle else DistributedEvaluationSampler(dataset)
+        if getattr(dataset, "split", None) != "train":
+            raise ValueError("Distributed loaders are for training; evaluate complete trajectories directly.")
+        sampler = DistributedSampler(dataset, shuffle=shuffle)
     resamples_each_epoch = (
         getattr(dataset, "windows_per_scenario", None) is not None
         or getattr(dataset, "epoch_num_windows", None) is not None

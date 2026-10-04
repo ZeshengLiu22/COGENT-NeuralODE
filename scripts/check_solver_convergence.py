@@ -128,7 +128,7 @@ def main() -> None:
     dataset = build_dataset(config["dataset"]["name"], split_files["val"], "val", config, normalizer)
     if not dataset.scenario_infos:
         raise ValueError("The checkpoint validation split is empty.")
-    known_steps = config["evaluation"].get("full_rollout_known_steps") or dataset.history_len
+    known_steps = config["evaluation"]["known_steps"]
     sample = dataset.get_rollout_data(0, start_t=int(known_steps) - 1)
     model = build_model(config, sample.x_static.shape[-1], sample.force_hist.shape[-1], sample.state_hist.shape[-1])
     model.load_state_dict(checkpoint["model_state"])

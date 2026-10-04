@@ -1,420 +1,182 @@
-# Shell Script Handbook
+# COGENT-NeuralODE handbook
 
-## Current NODE2 launchers
+This is the canonical guide for training and rollout evaluation. Detailed keys
+and formulas are in [config_setting.md](config_setting.md); temporal loss details
+are in [docs/temporal_consistency.md](docs/temporal_consistency.md).
 
-The active runtime is NODE2. `train_anuga_node2.sh` and `train_issm_node2.sh`
-call the shared `train_anuga.sh` and `train_issm.sh` launchers. Run these commands
-from the repository root. They start detached tmux jobs; `NPROC` defaults to 4,
-and `PYTHON_BIN` can select the installed training environment.
-
-Configuration files are recursively merged from left to right:
+## Configuration
 
 ```text
-BASE_CONFIG → DATASET_CONFIG (optional) → MODEL_CONFIG
-            → ablation overlay (formal ablation helpers only)
-            → LOADER_CONFIG (optional) → EXTRA_CONFIGS (optional)
+configs/
+  default.yaml
+  datasets/{issm,anuga,adcirc}.yaml
+  protocols/{issm,anuga}/main.yaml
+  models/node2.yaml
+  ablations/
+    history/h{1..8}.yaml
+    future_len/k{30,45,60,64,75,90,120,150,180}.yaml
+    rollout_start/known{8,60,90,120}.yaml
+    architecture/encoder/{transformer,lstm}.yaml
+    architecture/{residual,ode_context,relative_time}/{on,off}.yaml
+    temporal_consistency/tc0_off.yaml ... tc5_hybrid.yaml
+  runtime/fast.yaml
 ```
 
-| Environment variable | Meaning |
+Merge order is **default → dataset → protocol → model → ablations → runtime**.
+Later values win, dictionaries merge recursively, and lists replace wholesale.
+Each ablation changes one scientific choice. Explicit default controls remain
+available to make an experiment's config stack readable. Runtime settings
+control loading performance and never select data or alter scientific settings.
+
+| Quantity | Meaning |
 | --- | --- |
-| `BASE_CONFIG` | Training/window protocol. Shared defaults are H1 for both ANUGA and ISSM. |
-| `DATASET_CONFIG` | Defaults to `configs/anuga.yaml` or `configs/issm.yaml`. An explicit empty string skips this overlay. |
-| `MODEL_CONFIG` | Defaults to `configs/model_node2.yaml`. |
-| `LOADER_CONFIG` | Independent data/loader overlay. Empty by default in shared launchers; formal scan/ablation helpers retain their ANUGA or PIG5000 loader default. An explicit empty string skips it. |
-| `EXTRA_CONFIGS` | Space-separated final overrides, such as one TC config. Replacing this value leaves `LOADER_CONFIG` intact. |
-| `RUN_NAME`, `SESSION_NAME` | Output directory name and tmux session name. Use a distinct session for each concurrent run. |
-| `TRAIN_ARGS` | Additional training CLI arguments, such as `--horizon-curriculum off`. |
+| `dataset.history_len` (H) | Number of true context states immediately before the prediction start |
+| `dataset.future_len` (K) | Maximum supervision available in each training window |
+| `evaluation.known_steps` (S) | Absolute index of the first predicted state; prediction continues to trajectory end |
 
-An ordinary ISSM TC run on the 5 km dataset:
+For trajectory length T, rollout history is `x[S-H:S]` and targets are `x[S:T]`.
+Require `H <= S < T`. H6/known60 uses states 54–59; H6/known90 uses 84–89.
+Training windows naturally vary with H and K. The sampled training horizon
+`k_eff <= K` never limits inference. A K30 model still predicts 180 steps from
+known60 on a 240-step ISSM trajectory.
+
+| Protocol | Dataset | H | K | S | Relative-time scale | Batch | Min training horizon | Loss scale |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| ISSM | `data/ISSM/PIG_5000` | 1 | 180 | 60 | 180 | 8 | 24 | 100 |
+| ANUGA | `data/ANUGA/simulation_data_merged` | 1 | 64 | 8 | 65 | 1 | 8 | 1 |
+
+Both use Transformer, residual decoding, history context in the ODE, relative
+time, and TC off. The ISSM rate-modulo split and ANUGA random split remain in
+the dataset YAMLs. The ANUGA path shown above is abbreviated; its dataset YAML
+preserves the existing absolute data location. ADCIRC has a dataset adapter/config; select its temporal and
+training settings explicitly because no ADCIRC scientific protocol is supplied.
+
+## Training
+
+Install `requirements.txt` in the intended PyTorch environment, then run:
 
 ```bash
-BASE_CONFIG=configs/ISSM_History_Scan/base_ISSM_history_6.yaml \
-LOADER_CONFIG=configs/ISSM_History_Scan/issm_pig5000_fast_loader.yaml \
-EXTRA_CONFIGS=configs/TemporalConsistency/tc3_multiscale_rate.yaml \
-RUN_NAME=issm_h6_tc3 SESSION_NAME=issm_h6_tc3 \
-bash train_issm_node2.sh
-```
-
-`LOADER_CONFIG` above selects PIG5000 explicitly. The formal ISSM history/future
-and ablation helpers select that overlay by default, independently of TC.
-The shared launchers retain their existing dataset default when no loader
-overlay is supplied.
-
-For the published-protocol-matched ISSM initial-state comparison:
-
-```bash
-BASE_CONFIG=configs/issm_paper_matched.yaml \
-DATASET_CONFIG='' \
-MODEL_CONFIG=configs/model_node2.yaml \
-LOADER_CONFIG=configs/ISSM_History_Scan/issm_pig5000_fast_loader.yaml \
-EXTRA_CONFIGS='' \
-RUN_NAME=issm_paper_matched SESSION_NAME=issm_paper_matched \
 bash train_issm.sh
+bash train_anuga.sh
+EXTRA_CONFIGS="configs/ablations/history/h6.yaml" bash train_issm.sh
 ```
 
-This preserves H1/K239, `relative_time_scale: 239`, and
-`full_rollout_known_steps: 1`. The standard `configs/issm.yaml` overlay belongs
-to the separate forecasting protocol and would overwrite those last two
-settings. For the known `configs/issm_paper_matched.yaml` base, the ISSM launcher
-also skips its default dataset overlay when `DATASET_CONFIG` is unset; the
-explicit empty setting above works for custom self-contained protocol configs.
-“Paper matched” refers to the published information budget and split, rather
-than reproducing every detail of the historical external repository.
-
-For ANUGA with an independent loader and TC overlay:
+`DATASET_CONFIG`, `PROTOCOL_CONFIG`, `MODEL_CONFIG`, `RUNTIME_CONFIG`, and
+`EXTRA_CONFIGS` select explicit stack elements. `EXTRA_CONFIGS` is a
+space-separated list. Launchers retain torchrun/process and environment controls;
+inspect the script for local machine settings. To invoke Python directly:
 
 ```bash
-LOADER_CONFIG=configs/ANUGA_History_Scan/anuga_fast_loader.yaml \
-EXTRA_CONFIGS=configs/TemporalConsistency/tc1_adjacent_increment.yaml \
-RUN_NAME=anuga_tc1 SESSION_NAME=anuga_tc1 \
-bash train_anuga_node2.sh
+python scripts/train.py \
+  --config configs/default.yaml \
+  --config configs/datasets/issm.yaml \
+  --config configs/protocols/issm/main.yaml \
+  --config configs/models/node2.yaml \
+  --config configs/ablations/history/h1.yaml \
+  --config configs/runtime/fast.yaml --run-name issm_h1
 ```
 
-See [temporal consistency](docs/temporal_consistency.md) for all six overlays,
-objective definitions, sampling, and the `train_loss` logging migration.
-Evaluation restores the checkpoint's saved model/config/split; see the
-[foundation report](docs/foundation_correctness_repair.md) for protocol details.
+Every run writes `outputs/<run_name>/config.json`, `config_stack.txt`,
+`split_files.json`, `history.json`, `best.pt`, and `final_metrics.json`.
+The stack file lists config paths in their exact merge order. The checkpoint
+contains the merged config, training normalizer, and exact split manifest.
+Validation and final testing roll out from S to trajectory end; checkpoint
+selection uses `whole_rollout_norm_rmse`. DDP shards scenarios without padding
+and globally reduces error sums and element counts.
 
-## Historical script reference
+## Experiment order
 
-The remainder preserves the earlier multi-model handbook. NODE1, NCDE1,
-structured V2, removed config paths, and their launch commands below are
-historical material, not current runtime instructions. Use the current guide
-above for new jobs.
+1. **History first:** H1–H8 with K180, known60, all four default architecture
+   choices, and TC0. Choose H* from rollout validation.
+2. **Architecture:** hold H* and K180 fixed, run all 16 combinations of encoder,
+   residual, ODE context, and relative time; keep known60 and TC0.
+3. **Future supervision:** hold H* and selected architecture fixed; sweep
+   K30/45/60/75/90/120/150/180. Every run still validates from known60 to the end.
+4. **Temporal consistency:** hold selected H/K/architecture fixed, compare TC0–5.
+5. **Rollout-start robustness:** evaluate the same final checkpoint from known60,
+   known90, known120. Keep selected H and relative-time scale fixed.
 
-This is the quick memory aid for the `.sh` files in this repo.
-
-## ANUGA Training Scripts
-
-### `train_anuga_node1.sh`
-
-Starts ANUGA training for the `NODE1` model.
-
-It sets:
-
-- tmux session name: `anuga_node1`
-- model config: `configs/model_node1.yaml`
-- run name prefix: `anuga_node1_...`
-
-Use this when you want to train the NODE1 baseline:
+Local sequential helpers and HPC submitters use the same explicit controls:
 
 ```bash
-./train_anuga_node1.sh
+bash shell_scripts_sigspatial_issm/run_issm_history_scan_sequential.sh
+bash sbatch_scripts_sigspatial_issm/submit_issm_history_scan.sh
+bash sbatch_scripts_cercat_anuga/submit_anuga_history_scan.sh
+
+# Set these from completed selection results before the later phases.
+export HISTORY_LEN="$SELECTED_H"
+bash shell_scripts_sigspatial_issm/run_issm_architecture_scan_sequential.sh
+# HPC alternative: sbatch_scripts_sigspatial_issm/submit_issm_architecture_scan.sh
+
+export ENCODER="$SELECTED_ENCODER" RESIDUAL="$SELECTED_RESIDUAL"
+export ODE_CONTEXT="$SELECTED_ODE_CONTEXT" RELATIVE_TIME="$SELECTED_RELATIVE_TIME"
+bash shell_scripts_sigspatial_issm/run_issm_future_len_ablation_sequential.sh
+# HPC alternative: sbatch_scripts_sigspatial_issm/submit_issm_future_len_ablation.sh
+
+export FUTURE_LEN="$SELECTED_K"
+bash shell_scripts_sigspatial_issm/run_issm_temporal_consistency_scan_sequential.sh
+# HPC alternative: sbatch_scripts_sigspatial_issm/submit_issm_temporal_consistency_scan.sh
 ```
 
-### `train_anuga_node2.sh`
+Encoder accepts `transformer` or `lstm`; switches accept `on` or `off`.
+Later-phase helpers require the selections; they do not assume a winning H.
+TC is a separate phase, never a Cartesian product with architecture.
 
-Starts ANUGA training for the `NODE2` model.
+## Inference and saved results
 
-It sets:
-
-- tmux session name: `anuga_node2`
-- model config: `configs/model_node2.yaml`
-- run name prefix: `anuga_node2_...`
-
-Use this when you want to train the default upgraded NODE2 baseline:
+`scripts/evaluate.py` is the sole formal evaluation entrypoint:
 
 ```bash
-./train_anuga_node2.sh
+python scripts/evaluate.py --checkpoint outputs/final/best.pt --split test \
+  --config configs/ablations/rollout_start/known60.yaml --output-dir outputs/rollouts
+bash eval_rollout_start_sweep.sh --checkpoint outputs/final/best.pt \
+  --output-dir outputs/rollouts
 ```
 
-To run the old-baseline ablation while keeping the same launcher:
+`eval_rollout_tmux.sh` wraps the same entrypoint. `--known-steps` can set the
+start directly. Runtime overrides may relocate `dataset.data_dir` or select
+AMP/device/output; checkpoint H, K, architecture, solver, and training settings
+remain authoritative. There are no H/K inference overrides.
+
+Each start requires a separate inference run with true history reanchored at S.
+For T240, known60/90/120 predict 180/150/120 steps. Files use the stem
+`best.<split>.known<S>.full_rollout`. The compressed predictions NPZ and metadata
+JSON preserve every future node/channel, physical and normalized predictions and
+targets, scenario/simulation IDs, history/start lengths, absolute indices,
+adapter-provided time values, and lead steps. Plots may be shortened with
+`--plot-max-lead-step`; complete predictions and whole-rollout metrics remain.
+ANUGA exports can additionally create complete time series and flood maps.
+
+## Post-processing without inference
 
 ```bash
-EXTRA_CONFIGS=configs/NODE2_Upgrade1_Ablation/model_node2_upgrade_off.yaml ./train_anuga_node2.sh
+python scripts/postprocess_rollout.py \
+  --artifacts outputs/rollouts/best.test.known{60,90,120}.full_rollout_predictions.npz \
+  --mode equal-lead --lead-steps 120 --output-prefix outputs/rollouts/equal120
+python scripts/postprocess_rollout.py \
+  --artifacts outputs/rollouts/best.test.known{60,90,120}.full_rollout_predictions.npz \
+  --mode common-tail --output-prefix outputs/rollouts/common_tail
 ```
 
-### `train_anuga_node2_upgrade2.sh`
+Equal lead compares the first 120 forecast steps: absolute intervals 60–179,
+90–209, and 120–239. Common tail compares absolute 120–239 for all three runs,
+revealing accumulated rollout-age effects on the same target period.
+The postprocessor reads saved arrays, aligns scenarios/indices/times and mesh
+structure, and writes JSON/CSV; it never loads a checkpoint or runs a model.
+`--mode full`, `lead-slice`, and `absolute-slice` support further recomputation;
+use `--help` for slice bounds. Keep the predictions NPZ and companion metadata
+together as the authoritative inference output.
 
-Starts ANUGA training for the structured NODE2 upgrade-v2 overlay.
-
-It sets:
-
-- tmux session name: `anuga_node2_upgrade2`
-- model config: `configs/model_node2.yaml`
-- extra config: `configs/model_node2_upgrade2.yaml`
-- run name prefix: `anuga_node2_upgrade2_...`
-
-The upgrade-v2 overlay uses the structured latent vector field with branch
-normalization and gated fusion:
-
-```yaml
-model:
-  node2_vector_field_type: structured_v2
-  structured_dynamics:
-    term_norm: rmsnorm
-    fusion: softmax_gated
-    gate_init: active_mean
-```
-
-Use the no-coupling overlay for the matching ablation:
+## Validation
 
 ```bash
-EXTRA_CONFIGS=configs/model_node2_upgrade2_no_coupling.yaml ./train_anuga_node2.sh
+OMP_NUM_THREADS=1 python -m unittest discover -s tests -v
+GLOO_SOCKET_IFNAME=lo OMP_NUM_THREADS=1 python tests/check_temporal_ddp.py
+GLOO_SOCKET_IFNAME=lo OMP_NUM_THREADS=1 python tests/check_rollout_ddp.py
+python scripts/audit_foundation.py --help
+python scripts/audit_relative_time.py --help
 ```
 
-### `train_anuga.sh`
-
-This is the shared training launcher used by `train_anuga_node1.sh` and `train_anuga_node2.sh`.
-
-It starts a detached `tmux` session, checks that Python dependencies import correctly, then runs distributed training with:
-
-```bash
-python -m torch.distributed.run scripts/train.py
-```
-
-Use this directly only when you want to customize the model config or run name:
-
-```bash
-MODEL_CONFIG=configs/model_node2.yaml RUN_NAME=anuga_node2_custom bash train_anuga.sh
-```
-
-The shared launcher also accepts space-separated override configs through `EXTRA_CONFIGS`.
-
-Large-mesh CUDA memory knobs:
-
-- `model.decoder_chunk_size` chunks `NODE2`/`NCDE1` decoder rows. Default: `262144`.
-- `model.history_encoder.history_transformer_chunk_size` chunks temporal-Transformer node batches. Default: `8192`.
-- `model.history_encoder.history_transformer_force_math_sdp: true` avoids fused-attention CUDA launch issues on very large node batches.
-- Smaller chunks are safer for memory; larger chunks can be faster if the GPU has room.
-
-## ISSM Training Scripts
-
-### `train_issm_node1.sh`
-
-Starts ISSM training for the `NODE1` model.
-
-It sets:
-
-- tmux session name: `issm_node1`
-- dataset config: `configs/issm.yaml`
-- model config: `configs/model_node1.yaml`
-- run name prefix: `issm_node1_...`
-
-Use this when you want to train the ISSM NODE1 baseline:
-
-```bash
-./train_issm_node1.sh
-```
-
-### `train_issm_node2.sh`
-
-Starts ISSM training for the `NODE2` model.
-
-It sets:
-
-- tmux session name: `issm_node2`
-- dataset config: `configs/issm.yaml`
-- model config: `configs/model_node2.yaml`
-- run name prefix: `issm_node2_...`
-
-Use this when you want to train the default upgraded ISSM NODE2 baseline:
-
-```bash
-./train_issm_node2.sh
-```
-
-### `train_issm_node2_upgrade2.sh`
-
-Starts ISSM training for the same structured NODE2 upgrade-v2 overlay used by
-ANUGA.
-
-It sets:
-
-- tmux session name: `issm_node2_upgrade2`
-- dataset config: `configs/issm.yaml`
-- model config: `configs/model_node2.yaml`
-- extra config: `configs/model_node2_upgrade2.yaml`
-- run name prefix: `issm_node2_upgrade2_...`
-
-Use this when you want the structured v2 latent vector field with the
-configured branch normalization and gated fusion:
-
-```bash
-./train_issm_node2_upgrade2.sh
-```
-
-### `train_issm_ncde1.sh`
-
-Starts ISSM training for the `NCDE1` model.
-
-It sets:
-
-- tmux session name: `issm_ncde1`
-- dataset config: `configs/issm.yaml`
-- model config: `configs/model_ncde1.yaml`
-- run name prefix: `issm_ncde1_...`
-
-Use this when you want to train the ISSM NCDE1 baseline:
-
-```bash
-./train_issm_ncde1.sh
-```
-
-### `train_issm.sh`
-
-This is the shared ISSM training launcher used by `train_issm_node1.sh`, `train_issm_node2.sh`, and `train_issm_ncde1.sh`.
-
-It starts a detached `tmux` session, checks that Python dependencies import correctly, then runs distributed training with:
-
-```bash
-python -m torch.distributed.run scripts/train.py
-```
-
-Use this directly only when you want to customize the model config or run name:
-
-```bash
-MODEL_CONFIG=configs/model_ncde1.yaml RUN_NAME=issm_ncde1_custom bash train_issm.sh
-```
-
-## Shared Training Settings
-
-Useful environment variables:
-
-- `NPROC`: number of distributed processes, default `4`
-- `MODEL_CONFIG`: model YAML file
-- `RUN_NAME`: output folder name under `outputs/`
-- `SESSION_NAME`: tmux session name
-- `LOG_DIR`: log directory, default `logs/`
-- `TRAIN_ARGS`: extra CLI args passed after `--run-name`, for example `--horizon-curriculum off`
-
-Training horizon controls live in YAML under `training:` and are shared by
-ANUGA and ISSM:
-
-```yaml
-training:
-  train_horizon_min: 24
-  train_horizon_max: 120
-  train_horizon_curriculum:
-    enabled: true
-    epochs: 120
-    warmup_fractions: [0.40, 0.55, 0.70, 0.85]
-```
-
-`train_horizon_max` is the target cap for the run. With the default curriculum,
-the trainer ramps the epoch-local cap toward that target for the first 120
-epochs, then holds the target cap. Direct `scripts/train.py` runs can override
-only the enable flag with `--horizon-curriculum on` or
-`--horizon-curriculum off`.
-
-For tmux launchers:
-
-```bash
-TRAIN_ARGS="--horizon-curriculum off" ./train_anuga_node2.sh
-TRAIN_ARGS="--horizon-curriculum off" ./train_issm_node2.sh
-```
-
-## Evaluation Scripts
-
-### `eval_window_tmux.sh`
-
-Runs fixed-window evaluation for an existing checkpoint.
-
-Fixed-window evaluation gives the model fresh ground-truth history for each window, so it measures short-window forecasting quality.
-
-Use this when you want to evaluate an ANUGA checkpoint on train, val, or test windows:
-
-```bash
-CUDA_VISIBLE_DEVICES=0 bash eval_window_tmux.sh \
-  --checkpoint outputs/<run_name>/best.pt \
-  --config configs/ANUGA_History_Scan/base_ANUGA_history4.yaml \
-  --config configs/anuga.yaml \
-  --config configs/model_node1.yaml \
-  --history-len 4 \
-  --future-len 16 \
-  --split test
-```
-
-For ISSM, use the same script but swap in `configs/base_ISSM_history_N.yaml` and `configs/issm.yaml`:
-
-```bash
-CUDA_VISIBLE_DEVICES=0 bash eval_window_tmux.sh \
-  --checkpoint outputs/<run_name>/best.pt \
-  --config configs/base_ISSM_history_N.yaml \
-  --config configs/issm.yaml \
-  --config configs/model_node1.yaml \
-  --history-len 4 \
-  --future-len 16 \
-  --split test
-```
-
-Common options:
-
-- `--checkpoint`: checkpoint file to evaluate
-- `--config`: config files to load
-- `--split`: `train`, `val`, or `test`
-- `--history-len`: number of past state steps
-- `--future-len`: number of future prediction steps
-- `--gpu`: GPU id to expose through `CUDA_VISIBLE_DEVICES`
-- `--session-name`: custom tmux session name
-
-### `eval_full_rollout_tmux.sh`
-
-Runs full-rollout evaluation for an existing checkpoint.
-
-Full-rollout evaluation gives the model only the initial history, then asks it to predict the rest of the scenario. This is stricter than fixed-window evaluation.
-
-Use this when you want to test long-horizon behavior on ANUGA:
-
-```bash
-CUDA_VISIBLE_DEVICES=0 bash eval_full_rollout_tmux.sh \
-  --checkpoint outputs/<run_name>/best.pt \
-  --config configs/ANUGA_History_Scan/base_ANUGA_history1.yaml \
-  --config configs/anuga.yaml \
-  --config configs/model_node1.yaml \
-  --history-len 1 \
-  --known-steps 1 \
-  --plot-max-lead-step 60 \
-  --split test
-```
-
-For ISSM, use the same script but swap in `configs/base_ISSM_history_N.yaml` and `configs/issm.yaml`:
-
-```bash
-CUDA_VISIBLE_DEVICES=0 bash eval_full_rollout_tmux.sh \
-  --checkpoint outputs/<run_name>/best.pt \
-  --config configs/base_ISSM_history_N.yaml \
-  --config configs/issm.yaml \
-  --config configs/model_node1.yaml \
-  --history-len 1 \
-  --known-steps 1 \
-  --plot-max-lead-step 60 \
-  --split test
-```
-
-Common options:
-
-- `--checkpoint`: checkpoint file to evaluate
-- `--config`: config files to load
-- `--split`: `train`, `val`, or `test`
-- `--history-len`: number of initial history steps
-- `--known-steps`: number of known starting steps used in rollout setup
-- `--plot-max-lead-step`: largest lead step to include in plots
-- `--gpu`: GPU id to expose through `CUDA_VISIBLE_DEVICES`
-- `--session-name`: custom tmux session name
-
-Training-time full-rollout validation uses `evaluation.full_rollout_known_steps` for the same delayed-start behavior. The standalone script keeps `--known-steps` as a CLI flag so one checkpoint can be evaluated with multiple rollout starts.
-
-## Quick Choice Guide
-
-- Train ANUGA NODE1: `./train_anuga_node1.sh`
-- Train ANUGA NODE2: `./train_anuga_node2.sh`
-- Custom ANUGA training: `bash train_anuga.sh`
-- Train ISSM NODE1: `./train_issm_node1.sh`
-- Train ISSM NODE2: `./train_issm_node2.sh`
-- Train ISSM NCDE1: `./train_issm_ncde1.sh`
-- Custom ISSM training: `bash train_issm.sh`
-- Evaluate short-window prediction: `bash eval_window_tmux.sh ...`
-- Evaluate long rollout prediction: `bash eval_full_rollout_tmux.sh ...`
-
-## Watching Jobs
-
-All these scripts run inside detached `tmux` sessions.
-
-After starting a job, the script prints the session name. Watch it with:
-
-```bash
-tmux attach -t <session-name>
-```
-
-Logs are written under `logs/`.
+The [migration report](docs/config_evaluation_refactor_20261004.md) records the
+cleanup and validation results. Older guidance and reports are retained only in
+explicit historical directories and do not define the current workflow.

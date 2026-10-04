@@ -29,18 +29,16 @@ from models import build_model
 from models.continuous.node_latent_block import LatentNODEFunc
 from models.decoders.mlp_decoder import MLPDecoder
 from models.encoders.history_encoder import HistoryEncoder
-from run_full_rollout import load_saved_split_files
+from utils.checkpoint_evaluation import restore_checkpoint_splits
 from training import Evaluator
 from training.horizon_sampling import curriculum_horizon_max
 from training.trainer import Trainer, _truncate_future_horizon
 from utils.anuga_postprocess import generate_anuga_flood_maps
 from utils.eval_artifacts import (
     collect_full_rollout_prediction_bundle,
-    collect_window_prediction_bundle,
     infer_state_channel_names,
     save_evaluation_artifacts,
     summarize_full_rollout_bundle,
-    summarize_window_bundle,
     validate_full_rollout_bundle,
 )
 
@@ -338,8 +336,6 @@ class SmokeTest(unittest.TestCase):
         shutil.copyfile(self.root / "sim_000_merged.npz", test_path)
         val_dataset = ANUGADataset([val_path], history_len=3, future_len=2, split="val", normalizer=normalizer)
         test_dataset = ANUGADataset([test_path], history_len=3, future_len=2, split="test", normalizer=normalizer)
-        val_loader = DataLoader(val_dataset, batch_size=2, shuffle=False)
-        test_loader = DataLoader(test_dataset, batch_size=2, shuffle=False)
         sample = anuga[0]
         config = _base_config()
         config.update({
@@ -356,14 +352,14 @@ class SmokeTest(unittest.TestCase):
                     "warmup_fractions": [0.4, 0.55, 0.7, 0.85],
                 },
             },
-            "evaluation": {"full_rollout_on_val": False, "checkpoint_metric": "norm_rmse", "amp_mode": "none"},
+            "evaluation": {"known_steps": 3, "checkpoint_metric": "whole_rollout_norm_rmse", "amp_mode": "none"},
             "amp": {"mode": "none"},
         })
         model = build_model(config, sample.x_static.shape[-1], sample.force_hist.shape[-1], sample.state_hist.shape[-1])
         initial_parameters = {name: parameter.detach().clone() for name, parameter in model.named_parameters()}
         output_dir = self.root / "training"
         trainer = Trainer(
-            model, loader, val_loader, test_loader, anuga, val_dataset, test_dataset, normalizer,
+            model, loader, anuga, val_dataset, test_dataset, normalizer,
             config, torch.device("cpu"), output_dir, logging.getLogger(__name__),
         )
         summary = trainer.fit()
@@ -408,7 +404,7 @@ class SmokeTest(unittest.TestCase):
                         datasets.append(dataset_type(
                             [path], history_len=2, future_len=3, split=split, normalizer=normalizer,
                         ))
-                    loaders = [DataLoader(dataset, batch_size=2, shuffle=False) for dataset in datasets]
+                    loader = DataLoader(train_dataset, batch_size=2, shuffle=False)
                     config = _base_config()
                     config.update({
                         "seed": 17,
@@ -420,7 +416,7 @@ class SmokeTest(unittest.TestCase):
                             "train_horizon_curriculum": {"enabled": False},
                             "temporal_consistency": {"enabled": mode != "none", "mode": mode},
                         },
-                        "evaluation": {"checkpoint_metric": "whole_rollout_norm_rmse", "amp_mode": "none"},
+                        "evaluation": {"known_steps": 2, "checkpoint_metric": "whole_rollout_norm_rmse", "amp_mode": "none"},
                         "amp": {"mode": "none"},
                     })
                     sample = train_dataset[0]
@@ -429,7 +425,7 @@ class SmokeTest(unittest.TestCase):
                     initial = {name: parameter.detach().clone() for name, parameter in model.named_parameters()}
                     output_dir = self.root / f"training_{dataset_name}_{mode}"
                     trainer = Trainer(
-                        model, *loaders, *datasets, normalizer, config, torch.device("cpu"),
+                        model, loader, *datasets, normalizer, config, torch.device("cpu"),
                         output_dir, logging.getLogger(__name__),
                     )
                     summary = trainer.fit()
@@ -476,23 +472,18 @@ class SmokeTest(unittest.TestCase):
 
         loader = DataLoader(anuga, batch_size=1, shuffle=False)
         evaluator = Evaluator(ZeroModel(), anuga_normalizer, device=torch.device("cpu"))
-        window_metrics = evaluator.evaluate_loader(loader)
-        rollout_metrics = evaluator.evaluate_full_rollout(anuga)
-        shifted_rollout_metrics = evaluator.evaluate_full_rollout(anuga, start_t=3)
+        rollout_metrics = evaluator.evaluate_full_rollout(anuga, known_steps=3)
+        shifted_rollout_metrics = evaluator.evaluate_full_rollout(anuga, known_steps=4)
 
-        self.assertIn("norm_rmse", window_metrics)
-        self.assertIn("rmse", window_metrics)
-        self.assertTrue(np.isfinite(window_metrics["norm_rmse"]))
-        self.assertTrue(np.isfinite(window_metrics["rmse"]))
         self.assertIn("whole_rollout_norm_rmse", rollout_metrics)
         self.assertIn("whole_rollout_rmse", rollout_metrics)
         self.assertIn("horizon_norm_rmse_curve", rollout_metrics)
         self.assertIn("horizon_rmse_curve", rollout_metrics)
         self.assertEqual(len(shifted_rollout_metrics["horizon_rmse_curve"]), 2)
         with self.assertRaises(ValueError):
-            evaluator.evaluate_full_rollout(anuga, start_t=1)
+            evaluator.evaluate_full_rollout(anuga, known_steps=2)
 
-    def test_eval_artifacts_are_saved_for_window_and_rollout(self) -> None:
+    def test_eval_artifacts_are_saved_for_rollout(self) -> None:
         class ZeroModel(torch.nn.Module):
             def forward(self, data):
                 return torch.zeros_like(data.y_future)
@@ -505,39 +496,7 @@ class SmokeTest(unittest.TestCase):
         loader = DataLoader(anuga, batch_size=2, shuffle=False)
         model = ZeroModel()
 
-        window_bundle = collect_window_prediction_bundle(model, loader, anuga_normalizer, device=torch.device("cpu"))
-        window_summary = summarize_window_bundle(window_bundle, channel_names)
-        window_stem = self.root / "window_eval"
-        window_artifacts = save_evaluation_artifacts(
-            window_stem,
-            bundle=window_bundle,
-            summary=window_summary,
-            dataset_name="anuga",
-            split="train",
-            mode="fixed_window",
-            channel_names=channel_names,
-            scenario_infos=anuga.scenario_infos,
-        )
-        self.assertTrue((self.root / "window_eval_metrics.json").exists())
-        self.assertTrue((self.root / "window_eval_predictions.npz").exists())
-        self.assertTrue((self.root / "window_eval_trajectory_metrics.png").exists())
-        self.assertTrue((self.root / "window_eval_leadtime_metrics.png").exists())
-        self.assertTrue((self.root / "window_eval_leadtime_metrics.csv").exists())
-        self.assertTrue((self.root / "window_eval_leadtime_rmse_curve.csv").exists())
-        self.assertTrue((self.root / "window_eval_leadtime_rmse_curve.npz").exists())
-        self.assertTrue((self.root / "window_eval_leadtime_mae_curve.csv").exists())
-        self.assertTrue((self.root / "window_eval_leadtime_mae_curve.npz").exists())
-        self.assertIn("metrics_json", window_artifacts)
-        self.assertIn("leadtime_metrics_csv", window_artifacts)
-        self.assertIn("leadtime_metrics_plot", window_artifacts)
-        self.assertIn("leadtime_rmse_curve_csv", window_artifacts)
-        self.assertIn("leadtime_rmse_curve_npz", window_artifacts)
-        self.assertIn("leadtime_mae_curve_csv", window_artifacts)
-        self.assertIn("leadtime_mae_curve_npz", window_artifacts)
-        self.assertGreater(len(window_summary["trajectory_metrics"]), 0)
-        self.assertEqual(len(window_summary["leadtime_metrics"]), 2)
-
-        rollout_bundle = collect_full_rollout_prediction_bundle(model, anuga, anuga_normalizer, device=torch.device("cpu"))
+        rollout_bundle = collect_full_rollout_prediction_bundle(model, anuga, anuga_normalizer, device=torch.device("cpu"), known_steps=3)
         self.assertEqual(np.unique(rollout_bundle["trajectory_idx0"]).tolist(), [3, 4, 5])
         self.assertEqual(np.unique(rollout_bundle["horizon_idx0"]).tolist(), [0, 1, 2])
         rollout_coverage = validate_full_rollout_bundle(
@@ -607,7 +566,7 @@ class SmokeTest(unittest.TestCase):
             anuga,
             anuga_normalizer,
             device=torch.device("cpu"),
-            start_t=3,
+            known_steps=4,
         )
         self.assertTrue(np.all(shifted_rollout_bundle["history_end_idx0"] == 3))
         self.assertEqual(int(shifted_rollout_bundle["trajectory_idx0"].min()), 4)
@@ -632,23 +591,23 @@ class SmokeTest(unittest.TestCase):
         channel_names = infer_state_channel_names("anuga", state_dim=anuga[0].y_future.shape[-1])
 
         loader = DataLoader(anuga, batch_size=2, shuffle=False)
-        bundle = collect_window_prediction_bundle(ZeroModel(), loader, anuga_normalizer, device=torch.device("cpu"))
-        summary = summarize_window_bundle(bundle, channel_names)
-        artifact_stem = self.root / "window_eval"
+        bundle = collect_full_rollout_prediction_bundle(ZeroModel(), anuga, anuga_normalizer, device=torch.device("cpu"), known_steps=3)
+        summary = summarize_full_rollout_bundle(bundle, channel_names)
+        artifact_stem = self.root / "rollout_eval"
         save_evaluation_artifacts(
             artifact_stem,
             bundle=bundle,
             summary=summary,
             dataset_name="anuga",
             split="train",
-            mode="fixed_window",
+            mode="full_rollout",
             channel_names=channel_names,
             scenario_infos=anuga.scenario_infos,
         )
 
         flood_summary = generate_anuga_flood_maps(
-            self.root / "window_eval_predictions.npz",
-            output_dir=self.root / "window_eval_flood_maps",
+            self.root / "rollout_eval_predictions.npz",
+            output_dir=self.root / "rollout_eval_flood_maps",
             num_frames=2,
             trajectory_indices1=[4, 6],
         )
@@ -658,12 +617,12 @@ class SmokeTest(unittest.TestCase):
         self.assertEqual(scenario_summary["scenario_id"], "sim_000")
         self.assertEqual(scenario_summary["predicted_trajectory_indices1"], [4, 5, 6])
         self.assertEqual(scenario_summary["chosen_trajectory_indices1"], [4, 6])
-        self.assertTrue((self.root / "window_eval_flood_maps" / "summary.json").exists())
-        self.assertTrue((self.root / "window_eval_flood_maps" / "sim_000" / "summary.json").exists())
-        self.assertTrue((self.root / "window_eval_flood_maps" / "sim_000" / "depth_timeseries.npz").exists())
+        self.assertTrue((self.root / "rollout_eval_flood_maps" / "summary.json").exists())
+        self.assertTrue((self.root / "rollout_eval_flood_maps" / "sim_000" / "summary.json").exists())
+        self.assertTrue((self.root / "rollout_eval_flood_maps" / "sim_000" / "depth_timeseries.npz").exists())
         self.assertEqual(len(scenario_summary["figure_paths"]), 2)
 
-        depth_timeseries = np.load(self.root / "window_eval_flood_maps" / "sim_000" / "depth_timeseries.npz", allow_pickle=True)
+        depth_timeseries = np.load(self.root / "rollout_eval_flood_maps" / "sim_000" / "depth_timeseries.npz", allow_pickle=True)
         self.assertEqual(depth_timeseries["gt_depth"].shape, (6, 3))
         self.assertEqual(depth_timeseries["pred_depth"].shape, (6, 3))
         self.assertTrue(np.any(depth_timeseries["pred_available"] > 0))
@@ -682,7 +641,7 @@ class SmokeTest(unittest.TestCase):
             anuga,
             normalizer,
             device=torch.device("cpu"),
-            start_t=2,
+            known_steps=3,
         )
         summary = summarize_full_rollout_bundle(bundle, channel_names)
         artifact_stem = self.root / "full_rollout_eval"
@@ -740,13 +699,13 @@ class SmokeTest(unittest.TestCase):
         with manifest_path.open("w", encoding="utf-8") as handle:
             json.dump(
                 {
-                    "train": [str(second), str(first)],
-                    "val": [str(val)],
-                    "test": [str(test)],
+                    "train": [second.name, first.name],
+                    "val": [val.name],
+                    "test": [test.name],
                 },
                 handle,
             )
-        split_files = load_saved_split_files(manifest_path)
+        split_files = restore_checkpoint_splits({"split_manifest": json.loads(manifest_path.read_text())}, self.root)
         self.assertEqual(split_files["train"], [second, first])
         self.assertEqual(split_files["test"], [test])
 

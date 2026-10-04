@@ -1,7 +1,0 @@
-model:
-  use_residual_decoder: false
-  use_history_in_ode: true
-  use_relative_time: false
-  history_encoder:
-    history_encoder_type: transformer
-    history_use_positional_encoding: true
