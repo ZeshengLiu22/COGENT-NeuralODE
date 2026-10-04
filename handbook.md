@@ -131,7 +131,7 @@ sbatch launchers/slurm/anuga/01_history/h1.sh
 Submit each desired experiment's file individually. The shell defaults use
 four processes and permit `PROJECT_ROOT`, `PYTHON_BIN`, and `NPROC` overrides.
 Formal Slurm files preserve the established H100 resources, four ranks,
-24 CPUs per task, nine-hour ISSM/six-hour ANUGA walltime, and cluster Python
+24 CPUs per task, a 12-hour walltime for both datasets, and cluster Python
 environment. Both datasets explicitly charge allocation `TG-CIS250588`.
 Inspect the complete file for site details.
 
@@ -260,8 +260,9 @@ audits. [Current validation evidence](docs/final_cleanup_validation/results.json
 records completed checks; older `docs/refactor_validation/` is a historical
 snapshot of the earlier refactor.
 
-Before the large sweeps, run the separate bounded CUDA smoke jobs from an
-authenticated cluster login:
+The CUDA smoke scripts also request a 12-hour Slurm walltime; their diagnostic
+workload remains one epoch with four training batches per rank. Before the large
+sweeps, run these jobs from an authenticated cluster login:
 
 ```bash
 mkdir -p logs

@@ -91,7 +91,7 @@
       "tests/smoke_cuda_anuga.sh"
     ],
     "checker": "tests/check_real_cuda_smoke.py",
-    "requested_resources": "Each: one H100 node, four ranks, maximum 30 minutes.",
+    "requested_resources": "Each: one H100 node, four ranks, maximum 12 hours.",
     "scope": "Canonical H1/K180/S60 and H1/K64/S8 with full model widths/splits/budgets, four training batches per rank, one diagnostic epoch, full validation/test, checkpoint, standalone evaluation, NPZ and postprocessing.",
     "formal_result": false
   },
@@ -135,7 +135,7 @@
     "relative_markdown_links": "all resolve",
     "independent_formula_review": "sampler, architecture, curriculum and TC checked against current code"
   },
-  "updated_utc": "2026-10-04T20:22:54.062301+00:00",
+  "updated_utc": "2026-10-04T20:45:01.459754+00:00",
   "validation_note": "Checks retain their recorded scope and logs. The real_foundation_audit entry and artifact were refreshed during cache_defaults_and_audit_refresh_validation. Earlier CPU unit, distributed and prefix-rollout audit entries were not rerun in this follow-up.",
   "runtime_cache_fix_validation": {
     "generated_utc": "2026-10-04T18:59:32.650031+00:00",
@@ -207,5 +207,25 @@
       "status": "not_run",
       "reason": "Outside this follow-up scope."
     }
+  },
+  "slurm_walltime_update": {
+    "generated_utc": "2026-10-04T20:45:01.459754+00:00",
+    "base_commit": "6c0ecab8a8447697a5db992de8b3202d3f100d07",
+    "revision_scope": "Active Slurm walltime requests and accompanying documentation; committed with this record.",
+    "requested_walltime": "12:00:00",
+    "formal_scripts": 76,
+    "cuda_smoke_scripts": 2,
+    "validation": {
+      "active_slurm_time_directives": {
+        "scripts": 78,
+        "result": "all request 12:00:00"
+      },
+      "shell_syntax": {
+        "command": "bash -n on every tracked active shell script",
+        "scripts": 158,
+        "result": "passed"
+      }
+    },
+    "jobs_submitted": false
   }
 }

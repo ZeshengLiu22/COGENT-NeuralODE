@@ -6,7 +6,7 @@
 #SBATCH --ntasks-per-node=4
 #SBATCH --cpus-per-task=24
 #SBATCH --hint=nomultithread
-#SBATCH -t 09:00:00
+#SBATCH -t 12:00:00
 #SBATCH --chdir=/home1/09575/zeshengliu/scratch/COGENT-NeuralODE
 #SBATCH -o /home1/09575/zeshengliu/scratch/COGENT-NeuralODE/logs/slurm_%x_%j.out
 #SBATCH -e /home1/09575/zeshengliu/scratch/COGENT-NeuralODE/logs/slurm_%x_%j.err
