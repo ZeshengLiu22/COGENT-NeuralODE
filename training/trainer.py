@@ -12,6 +12,7 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR
 
+from datasets.split_utils import make_split_manifest
 from training.evaluator import Evaluator
 from training.horizon_sampling import curriculum_horizon_max, synchronized_horizon
 from training.losses import rollout_mse
@@ -118,10 +119,17 @@ class Trainer:
         self.device = device
         self.output_dir = output_dir
         self.logger = logger
+        self.split_manifest = make_split_manifest(
+            {"train": train_dataset.scenario_files, "val": val_dataset.scenario_files,
+             "test": test_dataset.scenario_files},
+            config.get("dataset", {}).get("data_dir", "."),
+        )
 
         training_cfg = config["training"]
         self.epochs = int(training_cfg["epochs"])
         self.grad_accum_steps = int(training_cfg.get("grad_accum_steps", 1))
+        if self.grad_accum_steps < 1:
+            raise ValueError("grad_accum_steps must be >= 1")
         self.max_grad_norm = float(training_cfg.get("max_grad_norm", 0.0))
         self.grad_clip_norm_dtype = training_cfg.get("grad_clip_norm_dtype", "fp32")
         self.loss_scale_factor = training_cfg.get("loss_scale_factor", 1.0)
@@ -129,7 +137,7 @@ class Trainer:
         evaluation_cfg = config["evaluation"]
         self.full_rollout_on_val = bool(evaluation_cfg.get("full_rollout_on_val", True))
         self.full_rollout_known_steps = evaluation_cfg.get("full_rollout_known_steps", None)
-        self.checkpoint_metric = str(evaluation_cfg.get("checkpoint_metric", "whole_rollout_rmse"))
+        self.checkpoint_metric = str(evaluation_cfg.get("checkpoint_metric", "whole_rollout_norm_rmse"))
         self.checkpoint_metric_scale = self._metric_scale(self.checkpoint_metric)
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -147,7 +155,7 @@ class Trainer:
         amp_mode = config["amp"]["mode"]
         self.amp_mode = amp_mode
         self.scaler = torch.amp.GradScaler("cuda", enabled=(self.device.type == "cuda" and amp_mode == "fp16"))
-        self.evaluator = Evaluator(self.model, normalizer, device=device, amp_mode=amp_mode)
+        self.evaluator = Evaluator(self.model, normalizer, device=device, amp_mode=evaluation_cfg.get("amp_mode", "none"))
         self.best_metric = float("inf")
         self.best_epoch = -1
 
@@ -256,6 +264,7 @@ class Trainer:
         for step, batch in enumerate(self.train_loader, start=1):
             if (step - 1) % self.grad_accum_steps == 0:
                 current_k_eff = synchronized_horizon(horizon_mode, horizon_min, horizon_max, self.device)
+                actual_group_size = min(self.grad_accum_steps, len(self.train_loader) - step + 1)
 
             batch = batch.to(self.device)
             batch = _truncate_future_horizon(batch, current_k_eff)
@@ -267,7 +276,7 @@ class Trainer:
                 y_pred_loss = y_pred_loss * self.loss_scale_factor
                 y_true_loss = y_true_loss * self.loss_scale_factor
             loss = rollout_mse(y_pred_loss, y_true_loss)
-            loss = loss / self.grad_accum_steps
+            loss = loss / actual_group_size
 
             if not torch.isfinite(loss):
                 raise FloatingPointError(
@@ -341,8 +350,10 @@ class Trainer:
             "optimizer_state": self.optimizer.state_dict(),
             "config": self.config,
             "normalizer": self.normalizer.to_dict(),
+            "split_manifest": self.split_manifest,
         }
         save_checkpoint(self.output_dir / "best.pt", checkpoint)
+        save_json(self.output_dir / "split_files.json", self.split_manifest)
 
     def _load_best_checkpoint(self) -> None:
         checkpoint_path = self.output_dir / "best.pt"

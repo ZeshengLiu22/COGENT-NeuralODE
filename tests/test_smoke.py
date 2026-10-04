@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import shutil
 import sys
 import tempfile
 import unittest
@@ -54,6 +55,7 @@ def _base_config() -> dict:
             "use_residual_decoder": True,
             "use_history_in_ode": True,
             "use_relative_time": True,
+            "relative_time_scale": 8.0,
             "history_encoder": {
                 "static_hidden_dims": [16],
                 "static_embed_dim": 16,
@@ -85,7 +87,6 @@ def _base_config() -> dict:
             "interpolation": "linear",
             "rtol": 1.0e-4,
             "atol": 1.0e-5,
-            "use_adjoint": False,
             "ode_options": None,
         },
     }
@@ -147,7 +148,6 @@ class SmokeTest(unittest.TestCase):
             [
                 np.tile(np.array([80.0, 80.0, 0.0], dtype=np.float32), (len(time), 1)),
                 np.tile(np.array([0.5, 0.4, 0.6], dtype=np.float32), (len(time), 1)),
-                np.tile(np.array([-1.0, -1.0, 1.0], dtype=np.float32), (len(time), 1)),
             ],
             axis=-1,
         ).astype(np.float32)
@@ -159,7 +159,13 @@ class SmokeTest(unittest.TestCase):
             ],
             axis=-1,
         ).astype(np.float32)
-        np.savez(root / "PIG_transient_m100_r080.npz", x_static=coords, force=issm_force, state=issm_state, edge_index=np.array([[0, 1, 1, 2], [1, 0, 2, 1]], dtype=np.int64), times=time)
+        issm_static = np.stack([
+            np.array([-20.0, -30.0, -40.0], dtype=np.float32),
+            np.array([80.0, 90.0, 100.0], dtype=np.float32),
+            np.linalg.norm(issm_state[0, :, :2], axis=-1),
+            np.array([1.0, 1.0, 0.0], dtype=np.float32),
+        ], axis=-1)
+        np.savez(root / "PIG_transient_m100_r080.npz", x_static=issm_static, force=issm_force, state=issm_state, edge_index=np.array([[0, 1, 1, 2], [1, 0, 2, 1]], dtype=np.int64), times=time)
 
         self.root = root
 
@@ -284,21 +290,18 @@ class SmokeTest(unittest.TestCase):
         anuga.normalizer = FeatureNormalizer.fit_from_trajectories(anuga.iter_trajectories())
         batch = next(iter(DataLoader(anuga, batch_size=2, shuffle=False)))
 
-        for use_adjoint in (False, True):
-            with self.subTest(use_adjoint=use_adjoint):
-                torch.manual_seed(7)
-                config = _base_config()
-                config["solver"]["use_adjoint"] = use_adjoint
-                model = build_model(config, batch.x_static.shape[-1], batch.force_hist.shape[-1], batch.state_hist.shape[-1])
-                prediction = model(batch)
-                loss = torch.nn.functional.mse_loss(prediction, batch.y_future)
-                loss.backward()
-                self.assertTrue(torch.isfinite(loss))
-                for module in (model.history_encoder, model.init_mlp, model.dynamics, model.decoder):
-                    gradients = [parameter.grad for parameter in module.parameters() if parameter.grad is not None]
-                    self.assertTrue(gradients, type(module).__name__)
-                    self.assertTrue(all(torch.isfinite(gradient).all() for gradient in gradients))
-                    self.assertGreater(sum(float(gradient.abs().sum()) for gradient in gradients), 0.0)
+        torch.manual_seed(7)
+        config = _base_config()
+        model = build_model(config, batch.x_static.shape[-1], batch.force_hist.shape[-1], batch.state_hist.shape[-1])
+        prediction = model(batch)
+        loss = torch.nn.functional.mse_loss(prediction, batch.y_future)
+        loss.backward()
+        self.assertTrue(torch.isfinite(loss))
+        for module in (model.history_encoder, model.init_mlp, model.dynamics, model.decoder):
+            gradients = [parameter.grad for parameter in module.parameters() if parameter.grad is not None]
+            self.assertTrue(gradients, type(module).__name__)
+            self.assertTrue(all(torch.isfinite(gradient).all() for gradient in gradients))
+            self.assertGreater(sum(float(gradient.abs().sum()) for gradient in gradients), 0.0)
 
     def test_residual_decoder_anchors_predictions_to_last_observed_state(self) -> None:
         anuga = ANUGADataset([self.root / "sim_000_merged.npz"], history_len=3, future_len=2, split="train")
@@ -329,9 +332,18 @@ class SmokeTest(unittest.TestCase):
         normalizer = FeatureNormalizer.fit_from_trajectories(anuga.iter_trajectories())
         anuga.normalizer = normalizer
         loader = DataLoader(anuga, batch_size=2, shuffle=False)
+        val_path = self.root / "sim_val_merged.npz"
+        test_path = self.root / "sim_test_merged.npz"
+        shutil.copyfile(self.root / "sim_000_merged.npz", val_path)
+        shutil.copyfile(self.root / "sim_000_merged.npz", test_path)
+        val_dataset = ANUGADataset([val_path], history_len=3, future_len=2, split="val", normalizer=normalizer)
+        test_dataset = ANUGADataset([test_path], history_len=3, future_len=2, split="test", normalizer=normalizer)
+        val_loader = DataLoader(val_dataset, batch_size=2, shuffle=False)
+        test_loader = DataLoader(test_dataset, batch_size=2, shuffle=False)
         sample = anuga[0]
         config = _base_config()
         config.update({
+            "dataset": {"name": "anuga", "data_dir": str(self.root), "history_len": 3, "future_len": 2},
             "training": {
                 "epochs": 1,
                 "lr": 1.0e-3,
@@ -344,14 +356,14 @@ class SmokeTest(unittest.TestCase):
                     "warmup_fractions": [0.4, 0.55, 0.7, 0.85],
                 },
             },
-            "evaluation": {"full_rollout_on_val": False, "checkpoint_metric": "rmse"},
+            "evaluation": {"full_rollout_on_val": False, "checkpoint_metric": "norm_rmse", "amp_mode": "none"},
             "amp": {"mode": "none"},
         })
         model = build_model(config, sample.x_static.shape[-1], sample.force_hist.shape[-1], sample.state_hist.shape[-1])
         initial_parameters = {name: parameter.detach().clone() for name, parameter in model.named_parameters()}
         output_dir = self.root / "training"
         trainer = Trainer(
-            model, loader, loader, loader, anuga, anuga, anuga, normalizer,
+            model, loader, val_loader, test_loader, anuga, val_dataset, test_dataset, normalizer,
             config, torch.device("cpu"), output_dir, logging.getLogger(__name__),
         )
         summary = trainer.fit()
@@ -359,6 +371,12 @@ class SmokeTest(unittest.TestCase):
         self.assertTrue(np.isfinite(summary["best_metric"]))
         self.assertTrue(np.isfinite(summary["test_rollout"]["whole_rollout_rmse"]))
         self.assertTrue((output_dir / "best.pt").exists())
+        checkpoint = torch.load(output_dir / "best.pt", map_location="cpu")
+        self.assertEqual(checkpoint["split_manifest"], {
+            "train": ["sim_000_merged.npz"], "val": [val_path.name], "test": [test_path.name],
+        })
+        self.assertEqual(json.loads((output_dir / "split_files.json").read_text()), checkpoint["split_manifest"])
+        self.assertEqual(checkpoint["config"], config)
         self.assertTrue((output_dir / "final_metrics.json").exists())
         history = json.loads((output_dir / "history.json").read_text())
         self.assertEqual(history[0]["train"]["train_horizon_max"], 1.0)
@@ -643,19 +661,23 @@ class SmokeTest(unittest.TestCase):
         first = self.root / "sim_000_merged.npz"
         second = self.root / "sim_001_merged.npz"
         second.write_bytes(first.read_bytes())
+        val = self.root / "sim_val_merged.npz"
+        test = self.root / "sim_test_merged.npz"
+        shutil.copyfile(first, val)
+        shutil.copyfile(first, test)
         manifest_path = self.root / "split_files.json"
         with manifest_path.open("w", encoding="utf-8") as handle:
             json.dump(
                 {
                     "train": [str(second), str(first)],
-                    "val": [str(first)],
-                    "test": [str(second), str(first)],
+                    "val": [str(val)],
+                    "test": [str(test)],
                 },
                 handle,
             )
         split_files = load_saved_split_files(manifest_path)
         self.assertEqual(split_files["train"], [second, first])
-        self.assertEqual(split_files["test"], [second, first])
+        self.assertEqual(split_files["test"], [test])
 
     def test_node2_checkpoint_roundtrip_after_forward(self) -> None:
         anuga = ANUGADataset([self.root / "sim_000_merged.npz"], history_len=3, future_len=2, split="train")

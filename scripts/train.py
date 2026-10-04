@@ -16,6 +16,7 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 
 from datasets.factory import build_dataset, build_loader, build_splits
 from datasets.normalization import FeatureNormalizer
+from datasets.split_utils import make_split_manifest
 from models import build_model
 from training import Trainer
 from utils import cleanup_distributed, configure_logging, ensure_dir, load_config_bundle, save_json, seed_everything, setup_distributed
@@ -58,7 +59,9 @@ def main() -> None:
 
     train_files, val_files, test_files = build_splits(config)
     if rank == 0:
-        save_json(output_dir / "split_files.json", {"train": [str(p) for p in train_files], "val": [str(p) for p in val_files], "test": [str(p) for p in test_files]})
+        save_json(output_dir / "split_files.json", make_split_manifest(
+            {"train": train_files, "val": val_files, "test": test_files}, config["dataset"]["data_dir"],
+        ))
 
     train_dataset = build_dataset(dataset_name, train_files, split="train", config=config, normalizer=None, sample_windows=True)
     normalizer = FeatureNormalizer.fit_from_trajectories(train_dataset.iter_trajectories(), std_floor=float(config["normalization"]["std_floor"]))

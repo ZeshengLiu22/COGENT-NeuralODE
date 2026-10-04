@@ -13,10 +13,11 @@ ensure_project_root_on_path()
 import torch
 from torch_geometric.loader import DataLoader
 
-from datasets.factory import build_dataset, build_splits
+from datasets.factory import build_dataset
 from datasets.normalization import FeatureNormalizer
 from models import build_model
 from utils import configure_logging, load_config_bundle
+from utils.checkpoint_evaluation import evaluation_autocast, resolve_device, restore_checkpoint_splits, restore_evaluation_config
 from utils.eval_artifacts import (
     collect_window_prediction_bundle,
     format_metric_table,
@@ -29,9 +30,14 @@ from utils.eval_artifacts import (
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--checkpoint", type=str, required=True)
-    parser.add_argument("--config", action="append", required=True)
+    parser.add_argument("--config", action="append", help="Optional runtime overrides. Model/config changes are rejected.")
     parser.add_argument("--split", type=str, default="test", choices=["train", "val", "test"])
-    parser.add_argument("--device", type=str, default="auto")
+    parser.add_argument("--device", type=str, default=None)
+    parser.add_argument("--data-dir", type=str, default=None, help="Relocate the saved scenario identifiers to this directory.")
+    parser.add_argument("--batch-size", type=int, default=None)
+    parser.add_argument("--num-workers", type=int, default=None)
+    parser.add_argument("--amp-mode", choices=["none", "bf16", "fp16"], default=None)
+    parser.add_argument("--output-dir", type=str, default=None)
     parser.add_argument(
         "--history-len",
         type=int,
@@ -47,34 +53,31 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def resolve_device(device_name: str) -> torch.device:
-    if device_name == "auto":
-        return torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    device = torch.device(device_name)
-    if device.type == "cuda" and not torch.cuda.is_available():
-        raise RuntimeError("CUDA was requested for window evaluation, but no CUDA device is available.")
-    return device
-
-
 def main() -> None:
     args = parse_args()
-    config = load_config_bundle(args.config)
     checkpoint = torch.load(args.checkpoint, map_location="cpu")
+    overrides = {
+        "dataset": {key: value for key, value in {
+            "data_dir": args.data_dir, "history_len": args.history_len, "future_len": args.future_len,
+        }.items() if value is not None},
+        "evaluation": {key: value for key, value in {
+            "batch_size": args.batch_size, "num_workers": args.num_workers, "amp_mode": args.amp_mode,
+        }.items() if value is not None},
+    }
+    if args.output_dir is not None:
+        overrides["output_dir"] = args.output_dir
+    external_config = load_config_bundle(args.config) if args.config else None
+    config = restore_evaluation_config(checkpoint, external_config, runtime_overrides=overrides)
     normalizer = FeatureNormalizer.from_dict(checkpoint["normalizer"])
     logger = configure_logging()
-    device = resolve_device(args.device)
+    device = resolve_device(args.device or config.get("device", "auto"))
 
     dataset_name = config["dataset"]["name"]
-    train_history_len = int(config["dataset"]["history_len"])
-    train_future_len = int(config["dataset"]["future_len"])
-    eval_history_len = train_history_len if args.history_len is None else int(args.history_len)
-    eval_future_len = train_future_len if args.future_len is None else int(args.future_len)
-    if eval_history_len < 1:
-        raise ValueError(f"--history-len must be >= 1, got {eval_history_len}.")
-    if eval_future_len < 1:
-        raise ValueError(f"--future-len must be >= 1, got {eval_future_len}.")
-    train_files, val_files, test_files = build_splits(config)
-    split_files = {"train": train_files, "val": val_files, "test": test_files}
+    train_history_len = int(checkpoint["config"]["dataset"]["history_len"])
+    train_future_len = int(checkpoint["config"]["dataset"]["future_len"])
+    eval_history_len = int(config["dataset"]["history_len"])
+    eval_future_len = int(config["dataset"]["future_len"])
+    split_files = restore_checkpoint_splits(checkpoint, config["dataset"]["data_dir"])
     dataset = build_dataset(
         dataset_name,
         split_files[args.split],
@@ -113,10 +116,16 @@ def main() -> None:
         train_history_len,
         train_future_len,
     )
-    bundle = collect_window_prediction_bundle(model, loader, normalizer, device=device)
+    amp_mode = config["evaluation"]["amp_mode"]
+    with evaluation_autocast(device, amp_mode):
+        bundle = collect_window_prediction_bundle(model, loader, normalizer, device=device)
     channel_names = infer_state_channel_names(dataset_name, state_dim=int(bundle["pred_phys"].shape[1]))
     summary = summarize_window_bundle(bundle, channel_names)
     artifact_stem = Path(str(Path(args.checkpoint).with_suffix("")) + ".window")
+    output_dir = args.output_dir or (external_config or {}).get("output_dir")
+    if output_dir is not None:
+        artifact_stem = Path(output_dir) / artifact_stem.name
+    artifact_stem.parent.mkdir(parents=True, exist_ok=True)
     artifact_paths = save_evaluation_artifacts(
         artifact_stem,
         bundle=bundle,
@@ -131,6 +140,9 @@ def main() -> None:
             "eval_future_len": eval_future_len,
             "train_config_history_len": train_history_len,
             "train_config_future_len": train_future_len,
+            "config_source": "checkpoint",
+            "split_source": "checkpoint.split_manifest",
+            "amp_mode": amp_mode,
         },
     )
 

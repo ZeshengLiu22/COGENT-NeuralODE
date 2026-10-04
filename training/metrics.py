@@ -5,6 +5,19 @@ from __future__ import annotations
 import torch
 
 
+def issm_speed_error_sums(pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+    """Physical speed SSE and count, derived from vx/vy (m/yr), for reporting only."""
+    speed_pred = torch.linalg.vector_norm(pred[..., :2].double(), dim=-1)
+    speed_true = torch.linalg.vector_norm(target[..., :2].double(), dim=-1)
+    return torch.stack(((speed_pred - speed_true).square().sum(), speed_pred.new_tensor(speed_pred.numel())))
+
+
+def add_issm_metrics(metrics: dict, speed_sums: torch.Tensor, prefix: str = "") -> None:
+    """Name the paper-comparison physical metrics and include units in their keys."""
+    metrics[f"{prefix}speed_rmse_m_per_yr"] = float(torch.sqrt(speed_sums[0] / speed_sums[1].clamp_min(1)))
+    metrics[f"{prefix}thickness_rmse_m"] = metrics[f"{prefix}rmse_ch2"]
+
+
 def channel_error_sums(pred: torch.Tensor, target: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """Return per-channel squared-error sums, absolute-error sums, and counts."""
 

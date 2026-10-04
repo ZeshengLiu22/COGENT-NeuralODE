@@ -6,3 +6,12 @@ dataset:
   anuga: {}
 
 # Stampede3 absolute data path for the ANUGA history scan.
+
+# Verified 73 snapshots minus 8 known steps.
+model:
+  relative_time_scale: 65.0
+
+evaluation:
+  amp_mode: none
+  checkpoint_metric: whole_rollout_norm_rmse
+  full_rollout_known_steps: 8

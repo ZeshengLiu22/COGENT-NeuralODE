@@ -897,7 +897,7 @@ Also support:
 
 #### Adjoint / checkpoint fallback
 
-Implement an adjoint or checkpoint-style fallback as a configurable option for memory-limited runs, but do not make it the default unless profiling shows it is needed.
+Use ordinary odeint backpropagation for the active NODE2 implementation.
 
 ### 12.5 CDE integration backend
 
@@ -1361,7 +1361,7 @@ Continuous-time integration can be more numerically sensitive than standard feed
 
 For large-mesh continuous models, implement a memory fallback such as:
 
-- adjoint ODE backpropagation,
+- ordinary ODE backpropagation,
 - checkpoint-style recomputation where appropriate,
 - chunked independent decoder and temporal-history operations,
 - and reduced-cost solvers for training.

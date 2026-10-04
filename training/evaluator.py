@@ -6,9 +6,11 @@ from contextlib import nullcontext
 
 import torch
 import torch.distributed as dist
+from torch.nn.parallel import DistributedDataParallel as DDP
 
 from datasets.normalization import FeatureNormalizer
 from training.metrics import channel_error_sums, overall_horizon_sums, summarize_channel_metrics, summarize_horizon_curve
+from training.metrics import add_issm_metrics, issm_speed_error_sums
 
 
 class Evaluator:
@@ -19,6 +21,14 @@ class Evaluator:
         self.normalizer = normalizer
         self.device = device
         self.amp_mode = amp_mode
+        if amp_mode not in ("none", "bf16", "fp16"):
+            raise ValueError(f"Unknown evaluation amp_mode: {amp_mode}")
+
+    def _predict(self, batch):
+        # Non-padding shards can have unequal batch counts. Bypass DDP forward
+        # buffer broadcasts; evaluation weights were synchronized by training.
+        model = self.model.module if isinstance(self.model, DDP) else self.model
+        return model(batch)
 
     def _autocast(self):
         if self.device.type != "cuda" or self.amp_mode == "none":
@@ -38,11 +48,13 @@ class Evaluator:
         phys_sq_sum = torch.zeros(state_dim, device=self.device, dtype=torch.float64)
         phys_abs_sum = torch.zeros(state_dim, device=self.device, dtype=torch.float64)
         count = torch.zeros(state_dim, device=self.device, dtype=torch.float64)
+        is_issm = getattr(loader.dataset, "dataset_name", None) == "issm"
+        speed_sums = torch.zeros(2, device=self.device, dtype=torch.float64)
 
         for batch in loader:
             batch = batch.to(self.device)
             with self._autocast():
-                y_pred = self.model(batch)
+                y_pred = self._predict(batch)
             if not torch.isfinite(y_pred).all():
                 raise FloatingPointError("Non-finite model outputs encountered during window evaluation.")
             pred_norm = y_pred.float()
@@ -53,6 +65,8 @@ class Evaluator:
             count += batch_count.to(dtype=torch.float64)
             pred_phys = self.normalizer.inverse_state(pred_norm)
             target_phys = self.normalizer.inverse_state(target_norm)
+            if is_issm:
+                speed_sums += issm_speed_error_sums(pred_phys, target_phys)
             batch_sq, batch_abs, _ = channel_error_sums(pred_phys, target_phys)
             phys_sq_sum += batch_sq.to(dtype=torch.float64)
             phys_abs_sum += batch_abs.to(dtype=torch.float64)
@@ -64,6 +78,9 @@ class Evaluator:
         self._all_reduce(count)
         metrics = summarize_channel_metrics(phys_sq_sum, phys_abs_sum, count)
         metrics.update(summarize_channel_metrics(norm_sq_sum, norm_abs_sum, count, prefix="norm_"))
+        if is_issm:
+            self._all_reduce(speed_sums)
+            add_issm_metrics(metrics, speed_sums)
         return metrics
 
     @torch.no_grad()
@@ -101,6 +118,9 @@ class Evaluator:
         norm_horizon_sq = torch.zeros(max_horizon, device=self.device, dtype=torch.float64)
         horizon_sq = torch.zeros(max_horizon, device=self.device, dtype=torch.float64)
         horizon_count = torch.zeros(max_horizon, device=self.device, dtype=torch.float64)
+        is_issm = getattr(dataset, "dataset_name", None) == "issm"
+        speed_sums = torch.zeros(2, device=self.device, dtype=torch.float64)
+        final_speed_sums = torch.zeros_like(speed_sums)
 
         rank = dist.get_rank() if dist.is_available() and dist.is_initialized() else 0
         world_size = dist.get_world_size() if dist.is_available() and dist.is_initialized() else 1
@@ -108,7 +128,7 @@ class Evaluator:
         for scenario_index in range(rank, len(dataset.scenario_infos), world_size):
             sample = dataset.get_rollout_data(scenario_index, start_t=rollout_start_t).to(self.device)
             with self._autocast():
-                y_pred = self.model(sample)
+                y_pred = self._predict(sample)
             if not torch.isfinite(y_pred).all():
                 raise FloatingPointError("Non-finite model outputs encountered during full-rollout evaluation.")
 
@@ -120,6 +140,9 @@ class Evaluator:
             whole_count += batch_count.to(dtype=torch.float64)
             pred_phys = self.normalizer.inverse_state(pred_norm)
             target_phys = self.normalizer.inverse_state(target_norm)
+            if is_issm:
+                speed_sums += issm_speed_error_sums(pred_phys, target_phys)
+                final_speed_sums += issm_speed_error_sums(pred_phys[:, -1:], target_phys[:, -1:])
             batch_sq, batch_abs, batch_count = channel_error_sums(pred_phys, target_phys)
             whole_sq += batch_sq.to(dtype=torch.float64)
             whole_abs += batch_abs.to(dtype=torch.float64)
@@ -165,6 +188,11 @@ class Evaluator:
         metrics.update(summarize_channel_metrics(norm_final_sq, norm_final_abs, final_count, prefix="final_step_norm_"))
         metrics["horizon_norm_rmse_curve"] = summarize_horizon_curve(norm_horizon_sq, horizon_count)
         metrics["horizon_rmse_curve"] = summarize_horizon_curve(horizon_sq, horizon_count)
+        if is_issm:
+            self._all_reduce(speed_sums)
+            self._all_reduce(final_speed_sums)
+            add_issm_metrics(metrics, speed_sums, prefix="whole_rollout_")
+            add_issm_metrics(metrics, final_speed_sums, prefix="final_step_")
         return metrics
 
     @staticmethod

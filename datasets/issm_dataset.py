@@ -53,7 +53,13 @@ def _build_edge_attr(x: np.ndarray, y: np.ndarray, base: np.ndarray, surface: np
 
 
 class ISSMDataset(BaseTemporalGraphDataset):
-    """Loader for ISSM ice-sheet trajectories."""
+    """Paper-aligned ISSM inputs with no future floating-field information.
+
+    Static channels are initial bed/base, surface, speed, and a binary mask
+    (one means floating/ocean, i.e. ``floating[0] < 0``). Forcing contains
+    initial-mask basal melt and queried-time SMB; state is vx, vy, thickness.
+    Coordinates are used only to construct auxiliary edge data.
+    """
 
     dataset_name = "issm"
 
@@ -77,14 +83,15 @@ class ISSMDataset(BaseTemporalGraphDataset):
             edge_attr = _build_edge_attr(xc, yc, base[0], surface[0], edge_index)
 
             rate = _parse_rate_from_filename(path) or 0.0
-            melt_rate = np.where(floating[0] < 0.0, rate, 0.0).astype(np.float32)
+            initial_mask = (floating[0] < 0.0).astype(np.float32)
+            melt_rate = (initial_mask * rate).astype(np.float32)
             melt_force = np.broadcast_to(melt_rate[None, :, None], (thickness.shape[0], thickness.shape[1], 1)).copy()
             smb_force = smb[..., None].astype(np.float32)
-            floating_force = floating[..., None].astype(np.float32)
-            force = np.concatenate([melt_force, smb_force, floating_force], axis=-1)
+            force = np.concatenate([melt_force, smb_force], axis=-1)
 
             state = np.stack([vx, vy, thickness], axis=-1).astype(np.float32)
-            x_static = np.stack([xc, yc], axis=1).astype(np.float32)
+            speed0 = np.sqrt(vx[0] ** 2 + vy[0] ** 2)
+            x_static = np.stack([base[0], surface[0], speed0, initial_mask], axis=1).astype(np.float32)
             times = np.arange(state.shape[0], dtype=np.float32)
             scenario_param = np.asarray([[rate]], dtype=np.float32)
             scenario_id = path.stem
@@ -95,6 +102,12 @@ class ISSMDataset(BaseTemporalGraphDataset):
             x_static = np.asarray(payload["x_static"], dtype=np.float32)
             force = np.asarray(payload["force"], dtype=np.float32)
             state = np.asarray(payload["state"], dtype=np.float32)
+            if x_static.shape[-1] != 4 or force.shape[-1] != 2 or state.shape[-1] != 3:
+                raise ValueError(
+                    "Generic ISSM payloads must follow the canonical protocol: "
+                    "4 static channels [base0, surface0, speed0, floating/ocean mask], "
+                    "2 forcing channels [basal melt, SMB], and 3 state channels [vx, vy, thickness]."
+                )
             edge_index = np.asarray(payload["edge_index"], dtype=np.int64)
             edge_attr = np.asarray(payload["edge_attr"], dtype=np.float32) if "edge_attr" in payload else None
             times = np.asarray(payload.get("times", np.arange(state.shape[0])), dtype=np.float32).reshape(-1)

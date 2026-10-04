@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import torch
 from torch import nn
-from torchdiffeq import odeint, odeint_adjoint
+from torchdiffeq import odeint
 
 from models.common.interpolation import build_forcing_interpolant
 from models.common.mlp import MLP
@@ -52,10 +52,8 @@ class NODE2Model(nn.Module):
         method = self.solver_cfg.get("ode_method", "midpoint")
         rtol = self.solver_cfg.get("rtol", 1e-4)
         atol = self.solver_cfg.get("atol", 1e-5)
-        use_adjoint = self.solver_cfg.get("use_adjoint", False)
         interpolation = self.solver_cfg.get("interpolation", "linear")
         options = self.solver_cfg.get("ode_options")
-        solver = odeint_adjoint if use_adjoint else odeint
 
         with torch.autocast(device_type=data.x_static.device.type, enabled=False):
             z0 = self.init_mlp(init_inputs.float())
@@ -75,9 +73,8 @@ class NODE2Model(nn.Module):
                 static_embed,
                 control,
                 hist_context=hist_context,
-                time_scale=eval_times[-1],
             )
-            rollout = solver(self.dynamics, z0, integration_times, method=method, rtol=rtol, atol=atol, options=options)
+            rollout = odeint(self.dynamics, z0, integration_times, method=method, rtol=rtol, atol=atol, options=options)
             z_future = rollout[1:].permute(1, 0, 2).contiguous()
 
         decoded = self.decoder(z_future)

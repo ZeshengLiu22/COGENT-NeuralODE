@@ -73,3 +73,56 @@ def parse_issm_rate_from_filename(path: str | Path) -> int | None:
     if match is None:
         return None
     return int(match.group(1))
+
+
+def validate_split_files(split_files: dict[str, Sequence[str | Path]]) -> None:
+    """Reject duplicate scenarios within or across the saved splits."""
+
+    seen: dict[Path, str] = {}
+    for split in ("train", "val", "test"):
+        if split not in split_files:
+            raise ValueError(f"Split manifest is missing {split!r}.")
+        for value in split_files[split]:
+            path = Path(value).resolve()
+            if path in seen:
+                raise ValueError(f"Scenario {value!s} occurs in both {seen[path]} and {split} split entries.")
+            seen[path] = split
+
+
+def make_split_manifest(split_files: dict[str, Sequence[str | Path]], data_dir: str | Path) -> dict[str, list[str]]:
+    """Record stable scenario identifiers relative to the dataset directory."""
+
+    validate_split_files(split_files)
+    root = Path(data_dir).resolve()
+    manifest: dict[str, list[str]] = {}
+    for split in ("train", "val", "test"):
+        manifest[split] = []
+        for value in split_files[split]:
+            path = Path(value).resolve()
+            try:
+                identifier = path.relative_to(root).as_posix()
+            except ValueError as exc:
+                raise ValueError(f"Scenario {path} is outside dataset.data_dir={root}.") from exc
+            manifest[split].append(identifier)
+    return manifest
+
+
+def resolve_split_manifest(manifest: dict[str, Sequence[str]], data_dir: str | Path) -> dict[str, list[Path]]:
+    """Restore only the recorded files, including after relocating the data root."""
+
+    root = Path(data_dir).resolve()
+    split_files: dict[str, list[Path]] = {}
+    for split in ("train", "val", "test"):
+        if split not in manifest:
+            raise ValueError(f"Split manifest is missing {split!r}.")
+        split_files[split] = []
+        for identifier in manifest[split]:
+            relative = Path(identifier)
+            if relative.is_absolute() or ".." in relative.parts:
+                raise ValueError(f"Split identifier must be a path relative to data_dir: {identifier!r}.")
+            path = (root / relative).resolve()
+            if not path.is_file():
+                raise FileNotFoundError(f"Saved {split} scenario is missing: {path}")
+            split_files[split].append(path)
+    validate_split_files(split_files)
+    return split_files

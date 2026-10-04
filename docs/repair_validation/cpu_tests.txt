@@ -1,0 +1,76 @@
+test_full_rollout_uses_embedded_split_after_relocation (test_foundation_checkpoint.CheckpointFoundationTest.test_full_rollout_uses_embedded_split_after_relocation) ... 2026-10-04 00:17:46,444 | INFO | Using evaluation device: cpu
+2026-10-04 00:17:46,444 | INFO | Full-rollout evaluation context: history_len=2 known_steps=2 rollout_steps=4..4 plot_max_lead_step=all (training config: history_len=2 future_len=2)
+2026-10-04 00:17:46,446 | INFO | Evaluation provenance: checkpoint=/tmp/tmpg3x2o5ui/best.pt split_manifest=checkpoint.split_manifest
+2026-10-04 00:17:47,880 | INFO | Full-rollout metrics: {'whole_rollout_rmse': 0.5326861163304916, 'whole_rollout_mae': 0.46608054265379906, 'whole_rollout_norm_rmse': 1.543099701953638, 'whole_rollout_norm_mae': 1.3501548552885652, 'whole_rollout_rmse_ch0': 0.5326861163304916, 'whole_rollout_mae_ch0': 0.46608054265379906, 'whole_rollout_norm_rmse_ch0': 1.543099701953638, 'whole_rollout_norm_mae_ch0': 1.3501548552885652, 'final_step_rmse': 0.8137034060404743, 'final_step_mae': 0.8127840459346771, 'final_step_norm_rmse': 2.3571582743495596, 'final_step_norm_mae': 2.354495048522949, 'final_step_rmse_ch0': 0.8137034060404743, 'final_step_mae_ch0': 0.8127840459346771, 'final_step_norm_rmse_ch0': 2.3571582743495596, 'final_step_norm_mae_ch0': 2.354495048522949, 'horizon_rmse_curve': [0.12397101435098429, 0.34977468772359505, 0.5789590802050077, 0.8137034358091247], 'horizon_norm_rmse_curve': [0.35912265719930886, 1.0132368557738676, 1.677144521349948, 2.3571582785984297]}
+2026-10-04 00:17:47,880 | INFO | Detailed metric table:
+scope          channel    count  phys_rmse  phys_mae  norm_rmse  norm_mae
+-------------  ---------  -----  ---------  --------  ---------  --------
+whole_rollout  aggregate  8      0.532686   0.466081  1.543100   1.350155
+whole_rollout  surge      8      0.532686   0.466081  1.543100   1.350155
+final_step     aggregate  2      0.813703   0.812784  2.357158   2.354495
+final_step     surge      2      0.813703   0.812784  2.357158   2.354495
+2026-10-04 00:17:47,881 | INFO | Saved evaluation artifacts: {'metrics_json': '/tmp/tmpg3x2o5ui/rollout_artifacts/best.full_rollout_metrics.json', 'predictions_npz': '/tmp/tmpg3x2o5ui/rollout_artifacts/best.full_rollout_predictions.npz', 'predictions_meta_json': '/tmp/tmpg3x2o5ui/rollout_artifacts/best.full_rollout_predictions_meta.json', 'metric_table_csv': '/tmp/tmpg3x2o5ui/rollout_artifacts/best.full_rollout_metric_table.csv', 'trajectory_metrics_csv': '/tmp/tmpg3x2o5ui/rollout_artifacts/best.full_rollout_trajectory_metrics.csv', 'trajectory_metrics_plot': '/tmp/tmpg3x2o5ui/rollout_artifacts/best.full_rollout_trajectory_metrics.png', 'summary_table_csv': '/tmp/tmpg3x2o5ui/rollout_artifacts/best.full_rollout_summary_table.csv', 'leadtime_metrics_csv': '/tmp/tmpg3x2o5ui/rollout_artifacts/best.full_rollout_leadtime_metrics.csv', 'leadtime_metrics_plot': '/tmp/tmpg3x2o5ui/rollout_artifacts/best.full_rollout_leadtime_metrics.png', 'leadtime_rmse_curve_csv': '/tmp/tmpg3x2o5ui/rollout_artifacts/best.full_rollout_leadtime_rmse_curve.csv', 'leadtime_rmse_curve_npz': '/tmp/tmpg3x2o5ui/rollout_artifacts/best.full_rollout_leadtime_rmse_curve.npz', 'leadtime_mae_curve_csv': '/tmp/tmpg3x2o5ui/rollout_artifacts/best.full_rollout_leadtime_mae_curve.csv', 'leadtime_mae_curve_npz': '/tmp/tmpg3x2o5ui/rollout_artifacts/best.full_rollout_leadtime_mae_curve.npz'}
+ok
+test_manifest_rejects_duplicate_or_missing_scenarios (test_foundation_checkpoint.CheckpointFoundationTest.test_manifest_rejects_duplicate_or_missing_scenarios) ... ok
+test_model_config_is_authoritative (test_foundation_checkpoint.CheckpointFoundationTest.test_model_config_is_authoritative) ... ok
+test_only_explicit_runtime_overrides_and_fp32_default (test_foundation_checkpoint.CheckpointFoundationTest.test_only_explicit_runtime_overrides_and_fp32_default) ... ok
+test_saved_split_survives_extra_files_and_relocation (test_foundation_checkpoint.CheckpointFoundationTest.test_saved_split_survives_extra_files_and_relocation) ... ok
+test_solver_diagnostic_runs_from_checkpoint_and_restores_solver (test_foundation_checkpoint.CheckpointFoundationTest.test_solver_diagnostic_runs_from_checkpoint_and_restores_solver) ... 2026-10-04 00:17:48,033 | INFO | Saved validation midpoint convergence diagnostic: /tmp/tmpcr58_11n/solver_convergence.json
+2026-10-04 00:17:48,033 | INFO | Half-to-quarter normalized change / model error: 0.000499058591164683
+ok
+test_standalone_evaluation_matches_evaluator_without_config (test_foundation_checkpoint.CheckpointFoundationTest.test_standalone_evaluation_matches_evaluator_without_config) ... 2026-10-04 00:17:48,096 | INFO | Using evaluation device: cpu
+2026-10-04 00:17:48,096 | INFO | Window evaluation lengths: history_len=2 future_len=2 (training config: history_len=2 future_len=2)
+2026-10-04 00:17:48,968 | INFO | Evaluation metrics: {'rmse': 0.26865206770966926, 'mae': 0.24289636562267938, 'norm_rmse': 0.7782386428980751, 'norm_mae': 0.7036288250237703, 'rmse_ch0': 0.26865206770966926, 'mae_ch0': 0.24289636562267938, 'norm_rmse_ch0': 0.7782386428980751, 'norm_mae_ch0': 0.7036288250237703}
+2026-10-04 00:17:48,968 | INFO | Detailed metric table:
+scope   channel    count  phys_rmse  phys_mae  norm_rmse  norm_mae
+------  ---------  -----  ---------  --------  ---------  --------
+window  aggregate  12     0.268652   0.242896  0.778239   0.703629
+window  surge      12     0.268652   0.242896  0.778239   0.703629
+2026-10-04 00:17:48,970 | INFO | Saved evaluation artifacts: {'metrics_json': '/tmp/tmpad8a_t8z/window_artifacts/best.window_metrics.json', 'predictions_npz': '/tmp/tmpad8a_t8z/window_artifacts/best.window_predictions.npz', 'predictions_meta_json': '/tmp/tmpad8a_t8z/window_artifacts/best.window_predictions_meta.json', 'metric_table_csv': '/tmp/tmpad8a_t8z/window_artifacts/best.window_metric_table.csv', 'trajectory_metrics_csv': '/tmp/tmpad8a_t8z/window_artifacts/best.window_trajectory_metrics.csv', 'trajectory_metrics_plot': '/tmp/tmpad8a_t8z/window_artifacts/best.window_trajectory_metrics.png', 'leadtime_metrics_csv': '/tmp/tmpad8a_t8z/window_artifacts/best.window_leadtime_metrics.csv', 'leadtime_metrics_plot': '/tmp/tmpad8a_t8z/window_artifacts/best.window_leadtime_metrics.png', 'leadtime_rmse_curve_csv': '/tmp/tmpad8a_t8z/window_artifacts/best.window_leadtime_rmse_curve.csv', 'leadtime_rmse_curve_npz': '/tmp/tmpad8a_t8z/window_artifacts/best.window_leadtime_rmse_curve.npz', 'leadtime_mae_curve_csv': '/tmp/tmpad8a_t8z/window_artifacts/best.window_leadtime_mae_curve.csv', 'leadtime_mae_curve_npz': '/tmp/tmpad8a_t8z/window_artifacts/best.window_leadtime_mae_curve.npz'}
+ok
+test_canonical_dimensions_initial_features_and_state (test_foundation_datasets.ISSMProtocolTest.test_canonical_dimensions_initial_features_and_state) ... ok
+test_future_floating_cannot_change_any_model_input (test_foundation_datasets.ISSMProtocolTest.test_future_floating_cannot_change_any_model_input) ... ok
+test_generic_legacy_dimensions_are_rejected (test_foundation_datasets.ISSMProtocolTest.test_generic_legacy_dimensions_are_rejected) ... ok
+test_initial_floating_changes_binary_and_melt_masks (test_foundation_datasets.ISSMProtocolTest.test_initial_floating_changes_binary_and_melt_masks) ... ok
+test_only_initial_static_quantities_are_used (test_foundation_datasets.ISSMProtocolTest.test_only_initial_static_quantities_are_used) ... ok
+test_published_rate_split_is_unchanged (test_foundation_datasets.ISSMProtocolTest.test_published_rate_split_is_unchanged) ... ok
+test_loader_uses_nonpadding_sampler_for_evaluation (test_foundation_datasets.LoaderRepairTest.test_loader_uses_nonpadding_sampler_for_evaluation) ... ok
+test_nonpadding_eval_sampler_has_no_duplicates_or_missing_samples (test_foundation_datasets.LoaderRepairTest.test_nonpadding_eval_sampler_has_no_duplicates_or_missing_samples) ... ok
+test_persistent_workers_disabled_only_for_training_resampling (test_foundation_datasets.LoaderRepairTest.test_persistent_workers_disabled_only_for_training_resampling) ... ok
+test_constant_detection_is_independent_of_physical_scale (test_foundation_datasets.NormalizationTest.test_constant_detection_is_independent_of_physical_scale) ... ok
+test_small_real_variance_constant_channels_and_roundtrip (test_foundation_datasets.NormalizationTest.test_small_real_variance_constant_channels_and_roundtrip) ... ok
+test_all_history_and_future_scans_share_prediction_anchors (test_foundation_datasets.ReferenceWindowTest.test_all_history_and_future_scans_share_prediction_anchors) ... ok
+test_current_constraints_remain_valid_and_bad_reference_is_rejected (test_foundation_datasets.ReferenceWindowTest.test_current_constraints_remain_valid_and_bad_reference_is_rejected) ... ok
+test_missing_reference_preserves_existing_windows (test_foundation_datasets.ReferenceWindowTest.test_missing_reference_preserves_existing_windows) ... ok
+test_active_model_only_imports_standard_ode_solver (test_foundation_model.FoundationModelTest.test_active_model_only_imports_standard_ode_solver) ... ok
+test_dataset_time_scale_survives_model_overlay (test_foundation_model.FoundationModelTest.test_dataset_time_scale_survives_model_overlay) ... ok
+test_formal_scan_configs_share_prediction_anchors (test_foundation_model.FoundationModelTest.test_formal_scan_configs_share_prediction_anchors) ... ok
+test_invalid_relative_time_scale_is_rejected (test_foundation_model.FoundationModelTest.test_invalid_relative_time_scale_is_rejected) ... ok
+test_paper_matched_config_observes_only_initial_state (test_foundation_model.FoundationModelTest.test_paper_matched_config_observes_only_initial_state) ... ok
+test_relative_time_prediction_prefix_is_independent_of_horizon (test_foundation_model.FoundationModelTest.test_relative_time_prediction_prefix_is_independent_of_horizon) ... ok
+test_relative_time_uses_fixed_scale_and_is_not_endpoint_clipped (test_foundation_model.FoundationModelTest.test_relative_time_uses_fixed_scale_and_is_not_endpoint_clipped) ... ok
+test_accumulation_tail_uses_actual_group_size (test_foundation_training.FoundationTrainingTest.test_accumulation_tail_uses_actual_group_size) ... ok
+test_evaluation_bypasses_ddp_forward_collectives (test_foundation_training.FoundationTrainingTest.test_evaluation_bypasses_ddp_forward_collectives) ... ok
+test_evaluation_fp32_independent_of_bf16_training (test_foundation_training.FoundationTrainingTest.test_evaluation_fp32_independent_of_bf16_training) ... ok
+test_issm_named_metrics_use_derived_physical_speed (test_foundation_training.FoundationTrainingTest.test_issm_named_metrics_use_derived_physical_speed) ... ok
+test_anuga_postprocess_generates_flood_maps (test_smoke.SmokeTest.test_anuga_postprocess_generates_flood_maps) ... ok
+test_chunked_decoder_matches_unchunked (test_smoke.SmokeTest.test_chunked_decoder_matches_unchunked) ... ok
+test_chunked_transformer_history_matches_unchunked (test_smoke.SmokeTest.test_chunked_transformer_history_matches_unchunked) ... ok
+test_datasets_and_models (test_smoke.SmokeTest.test_datasets_and_models) ... ok
+test_eval_artifacts_are_saved_for_window_and_rollout (test_smoke.SmokeTest.test_eval_artifacts_are_saved_for_window_and_rollout) ... ok
+test_evaluator_reports_normalized_and_physical_metrics (test_smoke.SmokeTest.test_evaluator_reports_normalized_and_physical_metrics) ... ok
+test_full_rollout_anuga_export_saves_every_future_step (test_smoke.SmokeTest.test_full_rollout_anuga_export_saves_every_future_step) ... ok
+test_horizon_curriculum_reaches_full_horizon_after_warmup (test_smoke.SmokeTest.test_horizon_curriculum_reaches_full_horizon_after_warmup) ... ok
+test_node2_backward_reaches_encoder_dynamics_and_decoder (test_smoke.SmokeTest.test_node2_backward_reaches_encoder_dynamics_and_decoder) ... ok
+test_node2_checkpoint_roundtrip_after_forward (test_smoke.SmokeTest.test_node2_checkpoint_roundtrip_after_forward) ... ok
+test_node2_integrates_from_zero_then_drops_initial_state (test_smoke.SmokeTest.test_node2_integrates_from_zero_then_drops_initial_state) ... ok
+test_node2_upgrade_flags_and_baseline_ablation (test_smoke.SmokeTest.test_node2_upgrade_flags_and_baseline_ablation) ... ok
+test_residual_decoder_anchors_predictions_to_last_observed_state (test_smoke.SmokeTest.test_residual_decoder_anchors_predictions_to_last_observed_state) ... ok
+test_rollout_preserves_saved_split_order (test_smoke.SmokeTest.test_rollout_preserves_saved_split_order) ... ok
+test_training_horizon_truncation_keeps_future_fields_aligned (test_smoke.SmokeTest.test_training_horizon_truncation_keeps_future_fields_aligned) ... ok
+test_training_saves_and_reloads_checkpoint_with_curriculum (test_smoke.SmokeTest.test_training_saves_and_reloads_checkpoint_with_curriculum) ... ok
+
+----------------------------------------------------------------------
+Ran 48 tests in 8.184s
+
+OK

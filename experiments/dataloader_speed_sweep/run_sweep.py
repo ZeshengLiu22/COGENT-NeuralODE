@@ -268,7 +268,7 @@ def main() -> None:
             },
             "evaluation": {
                 "full_rollout_on_val": not bool(args.skip_full_rollout_on_val),
-                "checkpoint_metric": "rmse" if args.skip_full_rollout_on_val else "whole_rollout_rmse",
+                "checkpoint_metric": "norm_rmse" if args.skip_full_rollout_on_val else "whole_rollout_norm_rmse",
             },
         }
         if args.train_horizon_max is not None:

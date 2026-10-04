@@ -10,5 +10,6 @@ training:
   val_every: 1
 
 evaluation:
+  amp_mode: none
   full_rollout_on_val: true
-  checkpoint_metric: whole_rollout_rmse
+  checkpoint_metric: whole_rollout_norm_rmse

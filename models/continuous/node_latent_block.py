@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+
 import torch
 from torch import nn
 
@@ -26,6 +28,13 @@ class LatentNODEFunc(nn.Module):
         dropout = continuous_cfg.get("dropout", 0.0)
         self.use_history_in_ode = model_cfg.get("use_history_in_ode", True)
         self.use_relative_time = model_cfg.get("use_relative_time", True)
+        # A model-level constant keeps shared rollout prefixes independent of
+        # the requested prediction endpoint. Dataset overlays set its units.
+        self.relative_time_scale = float(model_cfg.get("relative_time_scale", 1.0))
+        if self.use_relative_time and (
+            not math.isfinite(self.relative_time_scale) or self.relative_time_scale <= 0.0
+        ):
+            raise ValueError("model.relative_time_scale must be finite and > 0 when use_relative_time=true")
 
         input_dim = latent_dim + force_dim + static_dim
         if self.use_history_in_ode:
@@ -49,19 +58,16 @@ class LatentNODEFunc(nn.Module):
         static_embed: torch.Tensor,
         control,
         hist_context: torch.Tensor | None = None,
-        time_scale: torch.Tensor | float | None = None,
     ) -> None:
         self.edge_index = edge_index
         self.static_embed = static_embed
         self.hist_context = hist_context
-        self.time_scale = time_scale
         # Forcing is per-batch runtime data, not a checkpointed submodule.
         self.evaluate_forcing = control.evaluate
 
     def _relative_time_feature(self, t: torch.Tensor, z: torch.Tensor) -> torch.Tensor:
         t_tensor = t.to(device=z.device, dtype=z.dtype)
-        scale = torch.as_tensor(self.time_scale, device=z.device, dtype=z.dtype).clamp_min(torch.finfo(z.dtype).eps)
-        rel_t = (t_tensor / scale).clamp(0.0, 1.0)
+        rel_t = t_tensor / self.relative_time_scale
         return rel_t.reshape(1, 1).expand(z.shape[0], 1)
 
     def forward(self, t: torch.Tensor, z: torch.Tensor) -> torch.Tensor:

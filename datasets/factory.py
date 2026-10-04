@@ -1,7 +1,10 @@
 """Shared dataset, split, and loader construction for entrypoints."""
 
+import logging
 from pathlib import Path
 
+import torch.distributed as dist
+from torch.utils.data import Sampler
 from torch.utils.data.distributed import DistributedSampler
 from torch_geometric.loader import DataLoader
 
@@ -12,6 +15,23 @@ from .split_utils import discover_files, issm_rate_modulo_split, random_split
 
 
 DATASET_REGISTRY = {"anuga": ANUGADataset, "adcirc": ADCIRCDataset, "issm": ISSMDataset}
+
+
+class DistributedEvaluationSampler(Sampler[int]):
+    """Shard evaluation indices exactly once globally, without padding."""
+
+    def __init__(self, dataset, num_replicas: int | None = None, rank: int | None = None) -> None:
+        self.dataset = dataset
+        self.num_replicas = dist.get_world_size() if num_replicas is None else int(num_replicas)
+        self.rank = dist.get_rank() if rank is None else int(rank)
+        if self.num_replicas < 1 or not 0 <= self.rank < self.num_replicas:
+            raise ValueError("Distributed evaluation requires num_replicas >= 1 and 0 <= rank < num_replicas.")
+
+    def __iter__(self):
+        return iter(range(self.rank, len(self.dataset), self.num_replicas))
+
+    def __len__(self) -> int:
+        return len(range(self.rank, len(self.dataset), self.num_replicas))
 
 
 def build_splits(config: dict) -> tuple[list[Path], list[Path], list[Path]]:
@@ -62,6 +82,7 @@ def build_dataset(
         windows_per_scenario=sampling_cfg.get("windows_per_scenario"),
         seed=dataset_cfg.get("seed", config["seed"]),
         adapter_kwargs=dataset_cfg.get(dataset_name, {}),
+        window_reference=dataset_cfg.get("window_reference"),
     )
 
 
@@ -75,7 +96,19 @@ def build_loader(
     prefetch_factor: int | None = None,
     persistent_workers: bool = False,
 ):
-    sampler = DistributedSampler(dataset, shuffle=shuffle) if distributed else None
+    sampler = None
+    if distributed:
+        sampler = DistributedSampler(dataset, shuffle=True) if shuffle else DistributedEvaluationSampler(dataset)
+    resamples_each_epoch = (
+        getattr(dataset, "windows_per_scenario", None) is not None
+        or getattr(dataset, "epoch_num_windows", None) is not None
+    )
+    if getattr(dataset, "split", None) == "train" and resamples_each_epoch and num_workers > 0 and persistent_workers:
+        logging.getLogger(__name__).warning(
+            "Disabling persistent_workers for the training loader because epoch window resampling "
+            "requires workers to receive the updated window list."
+        )
+        persistent_workers = False
     kwargs = {
         "batch_size": batch_size,
         "shuffle": shuffle and sampler is None,

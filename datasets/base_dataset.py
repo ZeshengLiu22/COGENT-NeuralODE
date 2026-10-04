@@ -111,6 +111,7 @@ class BaseTemporalGraphDataset(Dataset):
         windows_per_scenario: int | None = None,
         seed: int = 42,
         adapter_kwargs: Optional[dict[str, Any]] = None,
+        window_reference: dict[str, int] | None = None,
     ) -> None:
         super().__init__()
         self.scenario_files = [Path(path) for path in scenario_files]
@@ -124,6 +125,7 @@ class BaseTemporalGraphDataset(Dataset):
         self.windows_per_scenario = windows_per_scenario
         self.seed = int(seed)
         self.adapter_kwargs = adapter_kwargs or {}
+        self.window_reference = window_reference
 
         self._trajectory_cache: dict[int, TrajectoryData] = {}
         self.scenario_infos: list[dict[str, Any]] = []
@@ -151,6 +153,7 @@ class BaseTemporalGraphDataset(Dataset):
                     history_len=self.history_len,
                     future_len=self.future_len,
                     stride=self.stride,
+                    window_reference=self.window_reference,
                 )
             )
 

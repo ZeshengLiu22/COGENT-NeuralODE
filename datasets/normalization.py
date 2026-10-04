@@ -1,4 +1,4 @@
-"""Train-split-only feature normalization with a standard-deviation floor."""
+"""Train-split-only normalization with unit-independent constant detection."""
 
 from __future__ import annotations
 
@@ -13,27 +13,36 @@ import torch
 class _RunningStats:
     """Accumulator for per-channel mean and variance."""
 
-    sum_: torch.Tensor
-    sumsq_: torch.Tensor
+    mean: torch.Tensor
+    m2: torch.Tensor
     count: int = 0
 
     def update(self, array: np.ndarray) -> None:
-        values = torch.as_tensor(array, dtype=torch.float32)
+        values = torch.as_tensor(array, dtype=torch.float64)
         if values.dim() < 2:
             values = values.unsqueeze(-1)
         flat = values.reshape(-1, values.shape[-1])
-        self.sum_ += flat.sum(dim=0)
-        self.sumsq_ += (flat * flat).sum(dim=0)
-        self.count += int(flat.shape[0])
+        batch_count = int(flat.shape[0])
+        if batch_count == 0:
+            return
+        batch_var, batch_mean = torch.var_mean(flat, dim=0, correction=0)
+        total_count = self.count + batch_count
+        delta = batch_mean - self.mean
+        self.m2 += batch_var * batch_count + delta.square() * (self.count * batch_count / total_count)
+        self.mean += delta * (batch_count / total_count)
+        self.count = total_count
 
-    def finalize(self, std_floor: float) -> tuple[torch.Tensor, torch.Tensor]:
+    def finalize(self) -> tuple[torch.Tensor, torch.Tensor]:
         if self.count == 0:
             raise ValueError("Cannot finalize empty running stats.")
-        mean = self.sum_ / float(self.count)
-        var = self.sumsq_ / float(self.count) - mean * mean
+        var = self.m2 / float(self.count)
         std = torch.sqrt(torch.clamp(var, min=0.0))
-        safe_std = torch.where(std >= std_floor, std, torch.ones_like(std))
-        return mean, safe_std
+        # A relative floating-point tolerance, not a cutoff in physical units.
+        # Centered float64 accumulation preserves small real variances such as
+        # rainfall in m/s, including channels whose std is far below 1e-5.
+        constant = std <= torch.finfo(torch.float64).eps * self.mean.abs()
+        safe_std = torch.where(constant, torch.ones_like(std), std)
+        return self.mean, safe_std
 
 
 class FeatureNormalizer:
@@ -55,11 +64,16 @@ class FeatureNormalizer:
         self.force_std = force_std.float()
         self.state_mean = state_mean.float()
         self.state_std = state_std.float()
+        # Retained as serialized legacy metadata; never a physical-scale cutoff.
         self.std_floor = float(std_floor)
 
     @classmethod
     def fit_from_trajectories(cls, trajectories: Iterable[Any], std_floor: float = 1e-5) -> "FeatureNormalizer":
-        """Estimate train-split-only statistics from full trajectories."""
+        """Estimate float64 population statistics from training trajectories.
+
+        ``std_floor`` is accepted for existing config/checkpoint metadata only;
+        constant detection uses float64 relative precision instead.
+        """
 
         trajectories = list(trajectories)
         if not trajectories:
@@ -69,18 +83,18 @@ class FeatureNormalizer:
         force_dim = trajectories[0].force.shape[-1]
         state_dim = trajectories[0].state.shape[-1]
 
-        static_stats = _RunningStats(torch.zeros(static_dim), torch.zeros(static_dim))
-        force_stats = _RunningStats(torch.zeros(force_dim), torch.zeros(force_dim))
-        state_stats = _RunningStats(torch.zeros(state_dim), torch.zeros(state_dim))
+        static_stats = _RunningStats(torch.zeros(static_dim, dtype=torch.float64), torch.zeros(static_dim, dtype=torch.float64))
+        force_stats = _RunningStats(torch.zeros(force_dim, dtype=torch.float64), torch.zeros(force_dim, dtype=torch.float64))
+        state_stats = _RunningStats(torch.zeros(state_dim, dtype=torch.float64), torch.zeros(state_dim, dtype=torch.float64))
 
         for trajectory in trajectories:
             static_stats.update(trajectory.x_static)
             force_stats.update(trajectory.force)
             state_stats.update(trajectory.state)
 
-        static_mean, static_std = static_stats.finalize(std_floor=std_floor)
-        force_mean, force_std = force_stats.finalize(std_floor=std_floor)
-        state_mean, state_std = state_stats.finalize(std_floor=std_floor)
+        static_mean, static_std = static_stats.finalize()
+        force_mean, force_std = force_stats.finalize()
+        state_mean, state_std = state_stats.finalize()
         return cls(static_mean, static_std, force_mean, force_std, state_mean, state_std, std_floor=std_floor)
 
     def transform_static(self, tensor: torch.Tensor) -> torch.Tensor:

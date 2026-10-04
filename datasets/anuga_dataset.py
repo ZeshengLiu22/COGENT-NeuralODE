@@ -60,6 +60,7 @@ class ANUGADataset(BaseTemporalGraphDataset):
             raise KeyError("ANUGA files must contain either edge_index or volumes.")
 
         times = np.asarray(data["time"], dtype=np.float32)
+        # ANUGA Rate_operator SI rate (m/s); retain these physical units.
         rain_rate = np.asarray(data["rain_rate"], dtype=np.float32)
         force = np.broadcast_to(rain_rate[:, None, None], (times.shape[0], x_static.shape[0], 1)).copy()
 

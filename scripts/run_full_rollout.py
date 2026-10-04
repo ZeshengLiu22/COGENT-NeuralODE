@@ -15,8 +15,10 @@ import torch
 
 from datasets.factory import build_dataset
 from datasets.normalization import FeatureNormalizer
+from datasets.split_utils import resolve_split_manifest, validate_split_files
 from models import build_model
 from utils import configure_logging
+from utils.checkpoint_evaluation import evaluation_autocast, resolve_device, restore_checkpoint_splits, restore_evaluation_config
 from utils.eval_artifacts import (
     collect_full_rollout_prediction_bundle,
     format_metric_table,
@@ -36,11 +38,14 @@ def parse_args() -> argparse.Namespace:
         type=str,
         default=None,
         help=(
-            "Exact split manifest. Defaults to split_files.json beside the checkpoint."
+            "Optional saved manifest for older checkpoints without an embedded split."
         ),
     )
     parser.add_argument("--split", type=str, default="test", choices=["train", "val", "test"])
     parser.add_argument("--device", type=str, default="auto")
+    parser.add_argument("--data-dir", type=str, default=None, help="Relocate saved scenario identifiers to this directory.")
+    parser.add_argument("--amp-mode", choices=["none", "bf16", "fp16"], default=None)
+    parser.add_argument("--output-dir", type=str, default=None)
     parser.add_argument(
         "--history-len",
         type=int,
@@ -92,34 +97,34 @@ def _resolve_saved_scenario_path(path_value: str | Path) -> Path:
     return (PROJECT_ROOT / path).resolve()
 
 
-def load_saved_split_files(path: str | Path) -> dict[str, list[Path]]:
+def load_saved_split_files(path: str | Path, data_dir: str | Path | None = None) -> dict[str, list[Path]]:
     """Load the exact train/val/test file lists recorded at training time."""
 
     manifest_path = Path(path)
     with manifest_path.open("r", encoding="utf-8") as handle:
         payload = json.load(handle)
 
+    if data_dir is not None:
+        return resolve_split_manifest(payload, data_dir)
+
     split_files: dict[str, list[Path]] = {}
     for split_name in ("train", "val", "test"):
         values = payload[split_name]
         split_files[split_name] = [_resolve_saved_scenario_path(value) for value in values]
+    validate_split_files(split_files)
     return split_files
-
-
-def resolve_device(device_name: str) -> torch.device:
-    if device_name == "auto":
-        return torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    device = torch.device(device_name)
-    if device.type == "cuda" and not torch.cuda.is_available():
-        raise RuntimeError("CUDA was requested for full-rollout evaluation, but no CUDA device is available.")
-    return device
 
 
 def main() -> None:
     args = parse_args()
     checkpoint_path = Path(args.checkpoint).resolve()
     checkpoint = torch.load(checkpoint_path, map_location="cpu")
-    config = checkpoint["config"]
+    overrides = {"dataset": {}, "evaluation": {}}
+    if args.data_dir is not None:
+        overrides["dataset"]["data_dir"] = args.data_dir
+    if args.amp_mode is not None:
+        overrides["evaluation"]["amp_mode"] = args.amp_mode
+    config = restore_evaluation_config(checkpoint, runtime_overrides=overrides)
     normalizer = FeatureNormalizer.from_dict(checkpoint["normalizer"])
     logger = configure_logging()
     device = resolve_device(args.device)
@@ -140,8 +145,16 @@ def main() -> None:
         raise ValueError(
             f"--known-steps must be >= evaluation history length ({eval_history_len}), got {known_steps}."
         )
-    split_manifest = Path(args.split_files) if args.split_files else checkpoint_path.parent / "split_files.json"
-    split_files = load_saved_split_files(split_manifest)
+    if "split_manifest" in checkpoint:
+        split_files = restore_checkpoint_splits(checkpoint, config["dataset"]["data_dir"])
+        split_manifest = "checkpoint.split_manifest"
+        if args.split_files is not None:
+            external_files = load_saved_split_files(args.split_files, config["dataset"]["data_dir"])
+            if external_files != split_files:
+                raise ValueError("External split manifest differs from the authoritative checkpoint split.")
+    else:
+        split_manifest = Path(args.split_files) if args.split_files else checkpoint_path.parent / "split_files.json"
+        split_files = load_saved_split_files(split_manifest)
     missing_files = [path for path in split_files[args.split] if not path.is_file()]
     if missing_files:
         preview = ", ".join(str(path) for path in missing_files[:5])
@@ -189,7 +202,8 @@ def main() -> None:
         int(config["dataset"]["future_len"]),
     )
     logger.info("Evaluation provenance: checkpoint=%s split_manifest=%s", checkpoint_path, split_manifest)
-    bundle = collect_full_rollout_prediction_bundle(model, dataset, normalizer, device=device, start_t=start_t)
+    with evaluation_autocast(device, config["evaluation"]["amp_mode"]):
+        bundle = collect_full_rollout_prediction_bundle(model, dataset, normalizer, device=device, start_t=start_t)
     coverage = validate_full_rollout_bundle(
         bundle,
         scenario_infos=dataset.scenario_infos,
@@ -208,6 +222,9 @@ def main() -> None:
         summary_method=summary_method,
     )
     artifact_stem = Path(str(checkpoint_path.with_suffix("")) + ".full_rollout")
+    if args.output_dir is not None:
+        artifact_stem = Path(args.output_dir) / artifact_stem.name
+    artifact_stem.parent.mkdir(parents=True, exist_ok=True)
     evaluation_metadata = {
         "eval_history_len": eval_history_len,
         "known_steps": known_steps,
@@ -221,6 +238,7 @@ def main() -> None:
         "summary_method": summary_method,
         "config_source": "checkpoint",
         "split_manifest": str(split_manifest),
+        "amp_mode": config["evaluation"]["amp_mode"],
         "rollout_coverage": coverage,
     }
     artifact_paths = save_evaluation_artifacts(

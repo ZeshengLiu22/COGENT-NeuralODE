@@ -470,6 +470,11 @@ def _metric_rows_and_values(
         f"{metric_prefix}norm_rmse": float(np.sqrt(norm_sq_sum.sum() / safe_total)),
         f"{metric_prefix}norm_mae": float(norm_abs_sum.sum() / safe_total),
     }
+    if channel_names == ["vx", "vy", "thickness"]:
+        speed_diff = (np.linalg.norm(pred_phys[:, :2].astype(np.float64), axis=-1)
+                      - np.linalg.norm(target_phys[:, :2].astype(np.float64), axis=-1))
+        metrics[f"{metric_prefix}speed_rmse_m_per_yr"] = float(np.sqrt(np.square(speed_diff).sum() / safe_count))
+        metrics[f"{metric_prefix}thickness_rmse_m"] = float(phys_rmse_ch[2])
     rows = [
         {
             "scope": scope,

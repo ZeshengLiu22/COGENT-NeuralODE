@@ -1,0 +1,2497 @@
+{
+  "generated_utc": "2026-10-04T05:17:47.588687+00:00",
+  "command": "python scripts/audit_foundation.py --data-root /scratch/09575/zeshengliu/COGENT-NeuralODE/data --output docs/foundation_audit.json",
+  "scope": "Read-only real-data audit; CPU; no optimization/training or accuracy claim",
+  "formal_config_sources": {
+    "issm": [
+      "configs/ISSM_History_Scan/base_ISSM_history_8.yaml",
+      "configs/model_node2.yaml",
+      "configs/ISSM_History_Scan/issm_pig5000_fast_loader.yaml"
+    ],
+    "anuga": [
+      "configs/ANUGA_History_Scan/base_ANUGA_history8.yaml",
+      "configs/model_node2.yaml",
+      "configs/ANUGA_History_Scan/anuga_fast_loader.yaml"
+    ]
+  },
+  "dataset_relocation_note": "Preserve formal subdirectory choices while relocating their data root via --data-root.",
+  "issm": {
+    "data_dir": "/scratch/09575/zeshengliu/COGENT-NeuralODE/data/ISSM/PIG_data",
+    "split_rates": {
+      "train": [
+        2,
+        4,
+        6,
+        8,
+        12,
+        14,
+        16,
+        18,
+        22,
+        24,
+        26,
+        28,
+        32,
+        34,
+        36,
+        38,
+        42,
+        44,
+        46,
+        48,
+        52,
+        54,
+        56,
+        58,
+        62,
+        64,
+        66,
+        68
+      ],
+      "val": [
+        0,
+        20,
+        40,
+        60
+      ],
+      "test": [
+        10,
+        30,
+        50,
+        70
+      ]
+    },
+    "split_counts": {
+      "train": 84,
+      "val": 12,
+      "test": 12
+    },
+    "trajectory_metadata": [
+      {
+        "file": "PIG_transient_m02000_r000.mat",
+        "split": "val",
+        "snapshots": 240,
+        "nodes": 6384,
+        "melt_rate": 0
+      },
+      {
+        "file": "PIG_transient_m02000_r002.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 6384,
+        "melt_rate": 2
+      },
+      {
+        "file": "PIG_transient_m02000_r004.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 6384,
+        "melt_rate": 4
+      },
+      {
+        "file": "PIG_transient_m02000_r006.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 6384,
+        "melt_rate": 6
+      },
+      {
+        "file": "PIG_transient_m02000_r008.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 6384,
+        "melt_rate": 8
+      },
+      {
+        "file": "PIG_transient_m02000_r010.mat",
+        "split": "test",
+        "snapshots": 240,
+        "nodes": 6384,
+        "melt_rate": 10
+      },
+      {
+        "file": "PIG_transient_m02000_r012.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 6384,
+        "melt_rate": 12
+      },
+      {
+        "file": "PIG_transient_m02000_r014.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 6384,
+        "melt_rate": 14
+      },
+      {
+        "file": "PIG_transient_m02000_r016.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 6384,
+        "melt_rate": 16
+      },
+      {
+        "file": "PIG_transient_m02000_r018.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 6384,
+        "melt_rate": 18
+      },
+      {
+        "file": "PIG_transient_m02000_r020.mat",
+        "split": "val",
+        "snapshots": 240,
+        "nodes": 6384,
+        "melt_rate": 20
+      },
+      {
+        "file": "PIG_transient_m02000_r022.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 6384,
+        "melt_rate": 22
+      },
+      {
+        "file": "PIG_transient_m02000_r024.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 6384,
+        "melt_rate": 24
+      },
+      {
+        "file": "PIG_transient_m02000_r026.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 6384,
+        "melt_rate": 26
+      },
+      {
+        "file": "PIG_transient_m02000_r028.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 6384,
+        "melt_rate": 28
+      },
+      {
+        "file": "PIG_transient_m02000_r030.mat",
+        "split": "test",
+        "snapshots": 240,
+        "nodes": 6384,
+        "melt_rate": 30
+      },
+      {
+        "file": "PIG_transient_m02000_r032.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 6384,
+        "melt_rate": 32
+      },
+      {
+        "file": "PIG_transient_m02000_r034.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 6384,
+        "melt_rate": 34
+      },
+      {
+        "file": "PIG_transient_m02000_r036.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 6384,
+        "melt_rate": 36
+      },
+      {
+        "file": "PIG_transient_m02000_r038.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 6384,
+        "melt_rate": 38
+      },
+      {
+        "file": "PIG_transient_m02000_r040.mat",
+        "split": "val",
+        "snapshots": 240,
+        "nodes": 6384,
+        "melt_rate": 40
+      },
+      {
+        "file": "PIG_transient_m02000_r042.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 6384,
+        "melt_rate": 42
+      },
+      {
+        "file": "PIG_transient_m02000_r044.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 6384,
+        "melt_rate": 44
+      },
+      {
+        "file": "PIG_transient_m02000_r046.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 6384,
+        "melt_rate": 46
+      },
+      {
+        "file": "PIG_transient_m02000_r048.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 6384,
+        "melt_rate": 48
+      },
+      {
+        "file": "PIG_transient_m02000_r050.mat",
+        "split": "test",
+        "snapshots": 240,
+        "nodes": 6384,
+        "melt_rate": 50
+      },
+      {
+        "file": "PIG_transient_m02000_r052.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 6384,
+        "melt_rate": 52
+      },
+      {
+        "file": "PIG_transient_m02000_r054.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 6384,
+        "melt_rate": 54
+      },
+      {
+        "file": "PIG_transient_m02000_r056.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 6384,
+        "melt_rate": 56
+      },
+      {
+        "file": "PIG_transient_m02000_r058.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 6384,
+        "melt_rate": 58
+      },
+      {
+        "file": "PIG_transient_m02000_r060.mat",
+        "split": "val",
+        "snapshots": 240,
+        "nodes": 6384,
+        "melt_rate": 60
+      },
+      {
+        "file": "PIG_transient_m02000_r062.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 6384,
+        "melt_rate": 62
+      },
+      {
+        "file": "PIG_transient_m02000_r064.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 6384,
+        "melt_rate": 64
+      },
+      {
+        "file": "PIG_transient_m02000_r066.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 6384,
+        "melt_rate": 66
+      },
+      {
+        "file": "PIG_transient_m02000_r068.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 6384,
+        "melt_rate": 68
+      },
+      {
+        "file": "PIG_transient_m02000_r070.mat",
+        "split": "test",
+        "snapshots": 240,
+        "nodes": 6384,
+        "melt_rate": 70
+      },
+      {
+        "file": "PIG_transient_m05000_r000.mat",
+        "split": "val",
+        "snapshots": 240,
+        "nodes": 2852,
+        "melt_rate": 0
+      },
+      {
+        "file": "PIG_transient_m05000_r002.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 2852,
+        "melt_rate": 2
+      },
+      {
+        "file": "PIG_transient_m05000_r004.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 2852,
+        "melt_rate": 4
+      },
+      {
+        "file": "PIG_transient_m05000_r006.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 2852,
+        "melt_rate": 6
+      },
+      {
+        "file": "PIG_transient_m05000_r008.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 2852,
+        "melt_rate": 8
+      },
+      {
+        "file": "PIG_transient_m05000_r010.mat",
+        "split": "test",
+        "snapshots": 240,
+        "nodes": 2852,
+        "melt_rate": 10
+      },
+      {
+        "file": "PIG_transient_m05000_r012.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 2852,
+        "melt_rate": 12
+      },
+      {
+        "file": "PIG_transient_m05000_r014.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 2852,
+        "melt_rate": 14
+      },
+      {
+        "file": "PIG_transient_m05000_r016.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 2852,
+        "melt_rate": 16
+      },
+      {
+        "file": "PIG_transient_m05000_r018.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 2852,
+        "melt_rate": 18
+      },
+      {
+        "file": "PIG_transient_m05000_r020.mat",
+        "split": "val",
+        "snapshots": 240,
+        "nodes": 2852,
+        "melt_rate": 20
+      },
+      {
+        "file": "PIG_transient_m05000_r022.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 2852,
+        "melt_rate": 22
+      },
+      {
+        "file": "PIG_transient_m05000_r024.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 2852,
+        "melt_rate": 24
+      },
+      {
+        "file": "PIG_transient_m05000_r026.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 2852,
+        "melt_rate": 26
+      },
+      {
+        "file": "PIG_transient_m05000_r028.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 2852,
+        "melt_rate": 28
+      },
+      {
+        "file": "PIG_transient_m05000_r030.mat",
+        "split": "test",
+        "snapshots": 240,
+        "nodes": 2852,
+        "melt_rate": 30
+      },
+      {
+        "file": "PIG_transient_m05000_r032.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 2852,
+        "melt_rate": 32
+      },
+      {
+        "file": "PIG_transient_m05000_r034.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 2852,
+        "melt_rate": 34
+      },
+      {
+        "file": "PIG_transient_m05000_r036.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 2852,
+        "melt_rate": 36
+      },
+      {
+        "file": "PIG_transient_m05000_r038.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 2852,
+        "melt_rate": 38
+      },
+      {
+        "file": "PIG_transient_m05000_r040.mat",
+        "split": "val",
+        "snapshots": 240,
+        "nodes": 2852,
+        "melt_rate": 40
+      },
+      {
+        "file": "PIG_transient_m05000_r042.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 2852,
+        "melt_rate": 42
+      },
+      {
+        "file": "PIG_transient_m05000_r044.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 2852,
+        "melt_rate": 44
+      },
+      {
+        "file": "PIG_transient_m05000_r046.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 2852,
+        "melt_rate": 46
+      },
+      {
+        "file": "PIG_transient_m05000_r048.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 2852,
+        "melt_rate": 48
+      },
+      {
+        "file": "PIG_transient_m05000_r050.mat",
+        "split": "test",
+        "snapshots": 240,
+        "nodes": 2852,
+        "melt_rate": 50
+      },
+      {
+        "file": "PIG_transient_m05000_r052.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 2852,
+        "melt_rate": 52
+      },
+      {
+        "file": "PIG_transient_m05000_r054.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 2852,
+        "melt_rate": 54
+      },
+      {
+        "file": "PIG_transient_m05000_r056.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 2852,
+        "melt_rate": 56
+      },
+      {
+        "file": "PIG_transient_m05000_r058.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 2852,
+        "melt_rate": 58
+      },
+      {
+        "file": "PIG_transient_m05000_r060.mat",
+        "split": "val",
+        "snapshots": 240,
+        "nodes": 2852,
+        "melt_rate": 60
+      },
+      {
+        "file": "PIG_transient_m05000_r062.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 2852,
+        "melt_rate": 62
+      },
+      {
+        "file": "PIG_transient_m05000_r064.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 2852,
+        "melt_rate": 64
+      },
+      {
+        "file": "PIG_transient_m05000_r066.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 2852,
+        "melt_rate": 66
+      },
+      {
+        "file": "PIG_transient_m05000_r068.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 2852,
+        "melt_rate": 68
+      },
+      {
+        "file": "PIG_transient_m05000_r070.mat",
+        "split": "test",
+        "snapshots": 240,
+        "nodes": 2852,
+        "melt_rate": 70
+      },
+      {
+        "file": "PIG_transient_m10000_r000.mat",
+        "split": "val",
+        "snapshots": 240,
+        "nodes": 1833,
+        "melt_rate": 0
+      },
+      {
+        "file": "PIG_transient_m10000_r002.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 1833,
+        "melt_rate": 2
+      },
+      {
+        "file": "PIG_transient_m10000_r004.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 1833,
+        "melt_rate": 4
+      },
+      {
+        "file": "PIG_transient_m10000_r006.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 1833,
+        "melt_rate": 6
+      },
+      {
+        "file": "PIG_transient_m10000_r008.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 1833,
+        "melt_rate": 8
+      },
+      {
+        "file": "PIG_transient_m10000_r010.mat",
+        "split": "test",
+        "snapshots": 240,
+        "nodes": 1833,
+        "melt_rate": 10
+      },
+      {
+        "file": "PIG_transient_m10000_r012.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 1833,
+        "melt_rate": 12
+      },
+      {
+        "file": "PIG_transient_m10000_r014.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 1833,
+        "melt_rate": 14
+      },
+      {
+        "file": "PIG_transient_m10000_r016.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 1833,
+        "melt_rate": 16
+      },
+      {
+        "file": "PIG_transient_m10000_r018.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 1833,
+        "melt_rate": 18
+      },
+      {
+        "file": "PIG_transient_m10000_r020.mat",
+        "split": "val",
+        "snapshots": 240,
+        "nodes": 1833,
+        "melt_rate": 20
+      },
+      {
+        "file": "PIG_transient_m10000_r022.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 1833,
+        "melt_rate": 22
+      },
+      {
+        "file": "PIG_transient_m10000_r024.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 1833,
+        "melt_rate": 24
+      },
+      {
+        "file": "PIG_transient_m10000_r026.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 1833,
+        "melt_rate": 26
+      },
+      {
+        "file": "PIG_transient_m10000_r028.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 1833,
+        "melt_rate": 28
+      },
+      {
+        "file": "PIG_transient_m10000_r030.mat",
+        "split": "test",
+        "snapshots": 240,
+        "nodes": 1833,
+        "melt_rate": 30
+      },
+      {
+        "file": "PIG_transient_m10000_r032.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 1833,
+        "melt_rate": 32
+      },
+      {
+        "file": "PIG_transient_m10000_r034.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 1833,
+        "melt_rate": 34
+      },
+      {
+        "file": "PIG_transient_m10000_r036.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 1833,
+        "melt_rate": 36
+      },
+      {
+        "file": "PIG_transient_m10000_r038.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 1833,
+        "melt_rate": 38
+      },
+      {
+        "file": "PIG_transient_m10000_r040.mat",
+        "split": "val",
+        "snapshots": 240,
+        "nodes": 1833,
+        "melt_rate": 40
+      },
+      {
+        "file": "PIG_transient_m10000_r042.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 1833,
+        "melt_rate": 42
+      },
+      {
+        "file": "PIG_transient_m10000_r044.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 1833,
+        "melt_rate": 44
+      },
+      {
+        "file": "PIG_transient_m10000_r046.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 1833,
+        "melt_rate": 46
+      },
+      {
+        "file": "PIG_transient_m10000_r048.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 1833,
+        "melt_rate": 48
+      },
+      {
+        "file": "PIG_transient_m10000_r050.mat",
+        "split": "test",
+        "snapshots": 240,
+        "nodes": 1833,
+        "melt_rate": 50
+      },
+      {
+        "file": "PIG_transient_m10000_r052.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 1833,
+        "melt_rate": 52
+      },
+      {
+        "file": "PIG_transient_m10000_r054.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 1833,
+        "melt_rate": 54
+      },
+      {
+        "file": "PIG_transient_m10000_r056.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 1833,
+        "melt_rate": 56
+      },
+      {
+        "file": "PIG_transient_m10000_r058.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 1833,
+        "melt_rate": 58
+      },
+      {
+        "file": "PIG_transient_m10000_r060.mat",
+        "split": "val",
+        "snapshots": 240,
+        "nodes": 1833,
+        "melt_rate": 60
+      },
+      {
+        "file": "PIG_transient_m10000_r062.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 1833,
+        "melt_rate": 62
+      },
+      {
+        "file": "PIG_transient_m10000_r064.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 1833,
+        "melt_rate": 64
+      },
+      {
+        "file": "PIG_transient_m10000_r066.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 1833,
+        "melt_rate": 66
+      },
+      {
+        "file": "PIG_transient_m10000_r068.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 1833,
+        "melt_rate": 68
+      },
+      {
+        "file": "PIG_transient_m10000_r070.mat",
+        "split": "test",
+        "snapshots": 240,
+        "nodes": 1833,
+        "melt_rate": 70
+      }
+    ],
+    "snapshot_count_histogram": {
+      "240": 108
+    },
+    "sample_file": "PIG_transient_m02000_r002.mat",
+    "channels": {
+      "x_static": [
+        "base0",
+        "surface0",
+        "speed0",
+        "floating_ocean_mask0"
+      ],
+      "force": [
+        "basal_melt",
+        "SMB"
+      ],
+      "state": [
+        "vx",
+        "vy",
+        "thickness"
+      ]
+    },
+    "trajectory_shapes": {
+      "x_static": [
+        6384,
+        4
+      ],
+      "force": [
+        240,
+        6384,
+        2
+      ],
+      "state": [
+        240,
+        6384,
+        3
+      ]
+    },
+    "sample_shapes": {
+      "x_static": [
+        6384,
+        4
+      ],
+      "state_hist": [
+        6384,
+        6,
+        3
+      ],
+      "force_hist": [
+        6384,
+        6,
+        2
+      ],
+      "force_future": [
+        6384,
+        180,
+        2
+      ],
+      "y_future": [
+        6384,
+        180,
+        3
+      ]
+    },
+    "static_channel_statistics": {
+      "mean": [
+        -637.1317942606701,
+        518.9497705339512,
+        666.0411192588329,
+        0.22916666666666666
+      ],
+      "std": [
+        418.43792049931153,
+        421.1740807438965,
+        901.9125661724593,
+        0.4202966875381632
+      ],
+      "min": [
+        -2427.0224609375,
+        0.10361681133508682,
+        0.0,
+        0.0
+      ],
+      "max": [
+        1070.2603759765625,
+        1515.85009765625,
+        4020.943359375,
+        1.0
+      ]
+    },
+    "static_first_three_nodes": [
+      [
+        -716.7966918945312,
+        100.62032318115234,
+        0.0,
+        0.0
+      ],
+      [
+        -702.2532348632812,
+        99.08648681640625,
+        3.2845957279205322,
+        0.0
+      ],
+      [
+        -678.3314208984375,
+        100.77799224853516,
+        2.030052661895752,
+        0.0
+      ]
+    ],
+    "force_first_three_nodes_at_t0": [
+      [
+        0.0,
+        0.017546597868204117
+      ],
+      [
+        0.0,
+        0.023532167077064514
+      ],
+      [
+        0.0,
+        0.0
+      ]
+    ],
+    "mask_values": [
+      0.0,
+      1.0
+    ],
+    "mask_convention": "1 = floating/ocean, defined by raw floating[0] < 0; 0 otherwise",
+    "future_floating_available_to_model": false,
+    "coordinates_predictive_channels": false,
+    "edge_attr_consumed_by_node2": false,
+    "raw_analytic_leakage_formula": "H[59] + floating[60:] - floating[59] (arithmetic in float32)",
+    "raw_analytic_leakage": [
+      {
+        "file": "PIG_transient_m02000_r000.mat",
+        "split": "val",
+        "t_end": 59,
+        "future_steps": 180,
+        "float32_reconstruction_rmse": 8.366003392701855e-05,
+        "max_abs_error": 0.00048828125
+      },
+      {
+        "file": "PIG_transient_m02000_r010.mat",
+        "split": "test",
+        "t_end": 59,
+        "future_steps": 180,
+        "float32_reconstruction_rmse": 8.423574544683391e-05,
+        "max_abs_error": 0.00048828125
+      },
+      {
+        "file": "PIG_transient_m02000_r020.mat",
+        "split": "val",
+        "t_end": 59,
+        "future_steps": 180,
+        "float32_reconstruction_rmse": 8.351680889215746e-05,
+        "max_abs_error": 0.00048828125
+      },
+      {
+        "file": "PIG_transient_m02000_r030.mat",
+        "split": "test",
+        "t_end": 59,
+        "future_steps": 180,
+        "float32_reconstruction_rmse": 8.375849482205276e-05,
+        "max_abs_error": 0.00048828125
+      },
+      {
+        "file": "PIG_transient_m02000_r040.mat",
+        "split": "val",
+        "t_end": 59,
+        "future_steps": 180,
+        "float32_reconstruction_rmse": 8.448153155078594e-05,
+        "max_abs_error": 0.00048828125
+      },
+      {
+        "file": "PIG_transient_m02000_r050.mat",
+        "split": "test",
+        "t_end": 59,
+        "future_steps": 180,
+        "float32_reconstruction_rmse": 8.386454606732304e-05,
+        "max_abs_error": 0.00048828125
+      },
+      {
+        "file": "PIG_transient_m02000_r060.mat",
+        "split": "val",
+        "t_end": 59,
+        "future_steps": 180,
+        "float32_reconstruction_rmse": 8.38576570601772e-05,
+        "max_abs_error": 0.00048828125
+      },
+      {
+        "file": "PIG_transient_m02000_r070.mat",
+        "split": "test",
+        "t_end": 59,
+        "future_steps": 180,
+        "float32_reconstruction_rmse": 8.305694901998895e-05,
+        "max_abs_error": 0.00048828125
+      },
+      {
+        "file": "PIG_transient_m05000_r000.mat",
+        "split": "val",
+        "t_end": 59,
+        "future_steps": 180,
+        "float32_reconstruction_rmse": 7.831604610225512e-05,
+        "max_abs_error": 0.00048828125
+      },
+      {
+        "file": "PIG_transient_m05000_r010.mat",
+        "split": "test",
+        "t_end": 59,
+        "future_steps": 180,
+        "float32_reconstruction_rmse": 7.839389602182476e-05,
+        "max_abs_error": 0.00048828125
+      },
+      {
+        "file": "PIG_transient_m05000_r020.mat",
+        "split": "val",
+        "t_end": 59,
+        "future_steps": 180,
+        "float32_reconstruction_rmse": 7.823179740187191e-05,
+        "max_abs_error": 0.00048828125
+      },
+      {
+        "file": "PIG_transient_m05000_r030.mat",
+        "split": "test",
+        "t_end": 59,
+        "future_steps": 180,
+        "float32_reconstruction_rmse": 7.748599732889653e-05,
+        "max_abs_error": 0.00048828125
+      },
+      {
+        "file": "PIG_transient_m05000_r040.mat",
+        "split": "val",
+        "t_end": 59,
+        "future_steps": 180,
+        "float32_reconstruction_rmse": 7.77698802673924e-05,
+        "max_abs_error": 0.00048828125
+      },
+      {
+        "file": "PIG_transient_m05000_r050.mat",
+        "split": "test",
+        "t_end": 59,
+        "future_steps": 180,
+        "float32_reconstruction_rmse": 7.849617880942072e-05,
+        "max_abs_error": 0.00048828125
+      },
+      {
+        "file": "PIG_transient_m05000_r060.mat",
+        "split": "val",
+        "t_end": 59,
+        "future_steps": 180,
+        "float32_reconstruction_rmse": 7.774914144785651e-05,
+        "max_abs_error": 0.00048828125
+      },
+      {
+        "file": "PIG_transient_m05000_r070.mat",
+        "split": "test",
+        "t_end": 59,
+        "future_steps": 180,
+        "float32_reconstruction_rmse": 7.68107630595333e-05,
+        "max_abs_error": 0.00048828125
+      },
+      {
+        "file": "PIG_transient_m10000_r000.mat",
+        "split": "val",
+        "t_end": 59,
+        "future_steps": 180,
+        "float32_reconstruction_rmse": 7.322127383495369e-05,
+        "max_abs_error": 0.00048828125
+      },
+      {
+        "file": "PIG_transient_m10000_r010.mat",
+        "split": "test",
+        "t_end": 59,
+        "future_steps": 180,
+        "float32_reconstruction_rmse": 7.417730786295447e-05,
+        "max_abs_error": 0.00048828125
+      },
+      {
+        "file": "PIG_transient_m10000_r020.mat",
+        "split": "val",
+        "t_end": 59,
+        "future_steps": 180,
+        "float32_reconstruction_rmse": 7.329850836045322e-05,
+        "max_abs_error": 0.00048828125
+      },
+      {
+        "file": "PIG_transient_m10000_r030.mat",
+        "split": "test",
+        "t_end": 59,
+        "future_steps": 180,
+        "float32_reconstruction_rmse": 7.34051393108542e-05,
+        "max_abs_error": 0.00048828125
+      },
+      {
+        "file": "PIG_transient_m10000_r040.mat",
+        "split": "val",
+        "t_end": 59,
+        "future_steps": 180,
+        "float32_reconstruction_rmse": 7.307713718131931e-05,
+        "max_abs_error": 0.00048828125
+      },
+      {
+        "file": "PIG_transient_m10000_r050.mat",
+        "split": "test",
+        "t_end": 59,
+        "future_steps": 180,
+        "float32_reconstruction_rmse": 7.298271288635994e-05,
+        "max_abs_error": 0.00048828125
+      },
+      {
+        "file": "PIG_transient_m10000_r060.mat",
+        "split": "val",
+        "t_end": 59,
+        "future_steps": 180,
+        "float32_reconstruction_rmse": 7.2365716219715e-05,
+        "max_abs_error": 0.00048828125
+      },
+      {
+        "file": "PIG_transient_m10000_r070.mat",
+        "split": "test",
+        "t_end": 59,
+        "future_steps": 180,
+        "float32_reconstruction_rmse": 7.2902291021695e-05,
+        "max_abs_error": 0.00048828125
+      }
+    ],
+    "full_rollout_known_steps": 60,
+    "full_rollout_future_steps": [
+      180
+    ],
+    "relative_time_scale": 180.0
+  },
+  "issm_formal_pig5000": {
+    "data_dir": "/scratch/09575/zeshengliu/COGENT-NeuralODE/data/ISSM/PIG_5000",
+    "split_rates": {
+      "train": [
+        2,
+        4,
+        6,
+        8,
+        12,
+        14,
+        16,
+        18,
+        22,
+        24,
+        26,
+        28,
+        32,
+        34,
+        36,
+        38,
+        42,
+        44,
+        46,
+        48,
+        52,
+        54,
+        56,
+        58,
+        62,
+        64,
+        66,
+        68
+      ],
+      "val": [
+        0,
+        20,
+        40,
+        60
+      ],
+      "test": [
+        10,
+        30,
+        50,
+        70
+      ]
+    },
+    "split_counts": {
+      "train": 28,
+      "val": 4,
+      "test": 4
+    },
+    "trajectory_metadata": [
+      {
+        "file": "PIG_transient_m05000_r000.mat",
+        "split": "val",
+        "snapshots": 240,
+        "nodes": 2852,
+        "melt_rate": 0
+      },
+      {
+        "file": "PIG_transient_m05000_r002.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 2852,
+        "melt_rate": 2
+      },
+      {
+        "file": "PIG_transient_m05000_r004.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 2852,
+        "melt_rate": 4
+      },
+      {
+        "file": "PIG_transient_m05000_r006.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 2852,
+        "melt_rate": 6
+      },
+      {
+        "file": "PIG_transient_m05000_r008.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 2852,
+        "melt_rate": 8
+      },
+      {
+        "file": "PIG_transient_m05000_r010.mat",
+        "split": "test",
+        "snapshots": 240,
+        "nodes": 2852,
+        "melt_rate": 10
+      },
+      {
+        "file": "PIG_transient_m05000_r012.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 2852,
+        "melt_rate": 12
+      },
+      {
+        "file": "PIG_transient_m05000_r014.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 2852,
+        "melt_rate": 14
+      },
+      {
+        "file": "PIG_transient_m05000_r016.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 2852,
+        "melt_rate": 16
+      },
+      {
+        "file": "PIG_transient_m05000_r018.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 2852,
+        "melt_rate": 18
+      },
+      {
+        "file": "PIG_transient_m05000_r020.mat",
+        "split": "val",
+        "snapshots": 240,
+        "nodes": 2852,
+        "melt_rate": 20
+      },
+      {
+        "file": "PIG_transient_m05000_r022.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 2852,
+        "melt_rate": 22
+      },
+      {
+        "file": "PIG_transient_m05000_r024.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 2852,
+        "melt_rate": 24
+      },
+      {
+        "file": "PIG_transient_m05000_r026.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 2852,
+        "melt_rate": 26
+      },
+      {
+        "file": "PIG_transient_m05000_r028.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 2852,
+        "melt_rate": 28
+      },
+      {
+        "file": "PIG_transient_m05000_r030.mat",
+        "split": "test",
+        "snapshots": 240,
+        "nodes": 2852,
+        "melt_rate": 30
+      },
+      {
+        "file": "PIG_transient_m05000_r032.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 2852,
+        "melt_rate": 32
+      },
+      {
+        "file": "PIG_transient_m05000_r034.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 2852,
+        "melt_rate": 34
+      },
+      {
+        "file": "PIG_transient_m05000_r036.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 2852,
+        "melt_rate": 36
+      },
+      {
+        "file": "PIG_transient_m05000_r038.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 2852,
+        "melt_rate": 38
+      },
+      {
+        "file": "PIG_transient_m05000_r040.mat",
+        "split": "val",
+        "snapshots": 240,
+        "nodes": 2852,
+        "melt_rate": 40
+      },
+      {
+        "file": "PIG_transient_m05000_r042.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 2852,
+        "melt_rate": 42
+      },
+      {
+        "file": "PIG_transient_m05000_r044.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 2852,
+        "melt_rate": 44
+      },
+      {
+        "file": "PIG_transient_m05000_r046.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 2852,
+        "melt_rate": 46
+      },
+      {
+        "file": "PIG_transient_m05000_r048.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 2852,
+        "melt_rate": 48
+      },
+      {
+        "file": "PIG_transient_m05000_r050.mat",
+        "split": "test",
+        "snapshots": 240,
+        "nodes": 2852,
+        "melt_rate": 50
+      },
+      {
+        "file": "PIG_transient_m05000_r052.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 2852,
+        "melt_rate": 52
+      },
+      {
+        "file": "PIG_transient_m05000_r054.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 2852,
+        "melt_rate": 54
+      },
+      {
+        "file": "PIG_transient_m05000_r056.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 2852,
+        "melt_rate": 56
+      },
+      {
+        "file": "PIG_transient_m05000_r058.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 2852,
+        "melt_rate": 58
+      },
+      {
+        "file": "PIG_transient_m05000_r060.mat",
+        "split": "val",
+        "snapshots": 240,
+        "nodes": 2852,
+        "melt_rate": 60
+      },
+      {
+        "file": "PIG_transient_m05000_r062.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 2852,
+        "melt_rate": 62
+      },
+      {
+        "file": "PIG_transient_m05000_r064.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 2852,
+        "melt_rate": 64
+      },
+      {
+        "file": "PIG_transient_m05000_r066.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 2852,
+        "melt_rate": 66
+      },
+      {
+        "file": "PIG_transient_m05000_r068.mat",
+        "split": "train",
+        "snapshots": 240,
+        "nodes": 2852,
+        "melt_rate": 68
+      },
+      {
+        "file": "PIG_transient_m05000_r070.mat",
+        "split": "test",
+        "snapshots": 240,
+        "nodes": 2852,
+        "melt_rate": 70
+      }
+    ],
+    "snapshot_count_histogram": {
+      "240": 36
+    },
+    "sample_file": "PIG_transient_m05000_r002.mat",
+    "channels": {
+      "x_static": [
+        "base0",
+        "surface0",
+        "speed0",
+        "floating_ocean_mask0"
+      ],
+      "force": [
+        "basal_melt",
+        "SMB"
+      ],
+      "state": [
+        "vx",
+        "vy",
+        "thickness"
+      ]
+    },
+    "trajectory_shapes": {
+      "x_static": [
+        2852,
+        4
+      ],
+      "force": [
+        240,
+        2852,
+        2
+      ],
+      "state": [
+        240,
+        2852,
+        3
+      ]
+    },
+    "sample_shapes": {
+      "x_static": [
+        2852,
+        4
+      ],
+      "state_hist": [
+        2852,
+        6,
+        3
+      ],
+      "force_hist": [
+        2852,
+        6,
+        2
+      ],
+      "force_future": [
+        2852,
+        180,
+        2
+      ],
+      "y_future": [
+        2852,
+        180,
+        3
+      ]
+    },
+    "static_channel_statistics": {
+      "mean": [
+        -636.8663906966863,
+        446.9601007951541,
+        731.3410021600615,
+        0.25455820476858343
+      ],
+      "std": [
+        422.20009296262344,
+        384.23994339218655,
+        988.4304717449548,
+        0.4356125860826124
+      ],
+      "min": [
+        -2429.37841796875,
+        0.10361681133508682,
+        0.0,
+        0.0
+      ],
+      "max": [
+        1082.2664794921875,
+        1516.396484375,
+        3957.036376953125,
+        1.0
+      ]
+    },
+    "static_first_three_nodes": [
+      [
+        -716.7966918945312,
+        92.92314910888672,
+        0.0,
+        0.0
+      ],
+      [
+        -702.2532348632812,
+        98.54627227783203,
+        3.2845957279205322,
+        0.0
+      ],
+      [
+        -678.3314208984375,
+        95.57656860351562,
+        2.030052661895752,
+        0.0
+      ]
+    ],
+    "force_first_three_nodes_at_t0": [
+      [
+        0.0,
+        0.017546597868204117
+      ],
+      [
+        0.0,
+        0.023532167077064514
+      ],
+      [
+        0.0,
+        0.0
+      ]
+    ],
+    "mask_values": [
+      0.0,
+      1.0
+    ],
+    "mask_convention": "1 = floating/ocean, defined by raw floating[0] < 0; 0 otherwise",
+    "future_floating_available_to_model": false,
+    "coordinates_predictive_channels": false,
+    "edge_attr_consumed_by_node2": false,
+    "raw_analytic_leakage_formula": "H[59] + floating[60:] - floating[59] (arithmetic in float32)",
+    "raw_analytic_leakage": [
+      {
+        "file": "PIG_transient_m05000_r000.mat",
+        "split": "val",
+        "t_end": 59,
+        "future_steps": 180,
+        "float32_reconstruction_rmse": 7.831604610225512e-05,
+        "max_abs_error": 0.00048828125
+      },
+      {
+        "file": "PIG_transient_m05000_r010.mat",
+        "split": "test",
+        "t_end": 59,
+        "future_steps": 180,
+        "float32_reconstruction_rmse": 7.839389602182476e-05,
+        "max_abs_error": 0.00048828125
+      },
+      {
+        "file": "PIG_transient_m05000_r020.mat",
+        "split": "val",
+        "t_end": 59,
+        "future_steps": 180,
+        "float32_reconstruction_rmse": 7.823179740187191e-05,
+        "max_abs_error": 0.00048828125
+      },
+      {
+        "file": "PIG_transient_m05000_r030.mat",
+        "split": "test",
+        "t_end": 59,
+        "future_steps": 180,
+        "float32_reconstruction_rmse": 7.748599732889653e-05,
+        "max_abs_error": 0.00048828125
+      },
+      {
+        "file": "PIG_transient_m05000_r040.mat",
+        "split": "val",
+        "t_end": 59,
+        "future_steps": 180,
+        "float32_reconstruction_rmse": 7.77698802673924e-05,
+        "max_abs_error": 0.00048828125
+      },
+      {
+        "file": "PIG_transient_m05000_r050.mat",
+        "split": "test",
+        "t_end": 59,
+        "future_steps": 180,
+        "float32_reconstruction_rmse": 7.849617880942072e-05,
+        "max_abs_error": 0.00048828125
+      },
+      {
+        "file": "PIG_transient_m05000_r060.mat",
+        "split": "val",
+        "t_end": 59,
+        "future_steps": 180,
+        "float32_reconstruction_rmse": 7.774914144785651e-05,
+        "max_abs_error": 0.00048828125
+      },
+      {
+        "file": "PIG_transient_m05000_r070.mat",
+        "split": "test",
+        "t_end": 59,
+        "future_steps": 180,
+        "float32_reconstruction_rmse": 7.68107630595333e-05,
+        "max_abs_error": 0.00048828125
+      }
+    ],
+    "full_rollout_known_steps": 60,
+    "full_rollout_future_steps": [
+      180
+    ],
+    "relative_time_scale": 180.0
+  },
+  "anuga": {
+    "data_dir": "/scratch/09575/zeshengliu/COGENT-NeuralODE/data/ANUGA/simulation_data_merged",
+    "split_files": {
+      "train": [
+        "sim_0015_merged.npz",
+        "sim_0009_merged.npz",
+        "sim_0014_merged.npz",
+        "sim_0007_merged.npz",
+        "sim_0012_merged.npz",
+        "sim_0010_merged.npz",
+        "sim_0006_merged.npz",
+        "sim_0019_merged.npz",
+        "sim_0003_merged.npz",
+        "sim_0000_merged.npz",
+        "sim_0016_merged.npz",
+        "sim_0005_merged.npz"
+      ],
+      "val": [
+        "sim_0011_merged.npz",
+        "sim_0018_merged.npz",
+        "sim_0002_merged.npz",
+        "sim_0004_merged.npz"
+      ],
+      "test": [
+        "sim_0017_merged.npz",
+        "sim_0001_merged.npz",
+        "sim_0013_merged.npz",
+        "sim_0008_merged.npz"
+      ]
+    },
+    "split_counts": {
+      "train": 12,
+      "val": 4,
+      "test": 4
+    },
+    "trajectory_metadata": [
+      {
+        "file": "sim_0000_merged.npz",
+        "split": "train",
+        "snapshots": 73,
+        "nodes": 68464
+      },
+      {
+        "file": "sim_0001_merged.npz",
+        "split": "test",
+        "snapshots": 73,
+        "nodes": 68464
+      },
+      {
+        "file": "sim_0002_merged.npz",
+        "split": "val",
+        "snapshots": 73,
+        "nodes": 68464
+      },
+      {
+        "file": "sim_0003_merged.npz",
+        "split": "train",
+        "snapshots": 73,
+        "nodes": 68464
+      },
+      {
+        "file": "sim_0004_merged.npz",
+        "split": "val",
+        "snapshots": 73,
+        "nodes": 68464
+      },
+      {
+        "file": "sim_0005_merged.npz",
+        "split": "train",
+        "snapshots": 73,
+        "nodes": 68464
+      },
+      {
+        "file": "sim_0006_merged.npz",
+        "split": "train",
+        "snapshots": 73,
+        "nodes": 68464
+      },
+      {
+        "file": "sim_0007_merged.npz",
+        "split": "train",
+        "snapshots": 73,
+        "nodes": 68464
+      },
+      {
+        "file": "sim_0008_merged.npz",
+        "split": "test",
+        "snapshots": 73,
+        "nodes": 68464
+      },
+      {
+        "file": "sim_0009_merged.npz",
+        "split": "train",
+        "snapshots": 73,
+        "nodes": 68464
+      },
+      {
+        "file": "sim_0010_merged.npz",
+        "split": "train",
+        "snapshots": 73,
+        "nodes": 68464
+      },
+      {
+        "file": "sim_0011_merged.npz",
+        "split": "val",
+        "snapshots": 73,
+        "nodes": 68464
+      },
+      {
+        "file": "sim_0012_merged.npz",
+        "split": "train",
+        "snapshots": 73,
+        "nodes": 68464
+      },
+      {
+        "file": "sim_0013_merged.npz",
+        "split": "test",
+        "snapshots": 73,
+        "nodes": 68464
+      },
+      {
+        "file": "sim_0014_merged.npz",
+        "split": "train",
+        "snapshots": 73,
+        "nodes": 68464
+      },
+      {
+        "file": "sim_0015_merged.npz",
+        "split": "train",
+        "snapshots": 73,
+        "nodes": 68464
+      },
+      {
+        "file": "sim_0016_merged.npz",
+        "split": "train",
+        "snapshots": 73,
+        "nodes": 68464
+      },
+      {
+        "file": "sim_0017_merged.npz",
+        "split": "test",
+        "snapshots": 73,
+        "nodes": 68464
+      },
+      {
+        "file": "sim_0018_merged.npz",
+        "split": "val",
+        "snapshots": 73,
+        "nodes": 68464
+      },
+      {
+        "file": "sim_0019_merged.npz",
+        "split": "train",
+        "snapshots": 73,
+        "nodes": 68464
+      }
+    ],
+    "snapshot_count_histogram": {
+      "73": 20
+    },
+    "rainfall_units": "m/s (ANUGA Rate_operator SI rate, no adapter conversion)",
+    "statistics_scope": "All training-split times and nodes, weighted exactly as full adapter force tensors",
+    "compact_weight_common_divisor": 68464,
+    "full_training_force_value_count": 59974464,
+    "raw_training_rainfall": {
+      "mean": 5.862700872449432e-06,
+      "std": 5.8554946292813445e-06,
+      "min": 0.0,
+      "max": 1.9991824956377968e-05
+    },
+    "normalizer_force_mean": [
+      5.862701073056087e-06
+    ],
+    "normalizer_force_std": [
+      5.855494691786589e-06
+    ],
+    "normalized_training_rainfall": {
+      "mean": -4.105101931821398e-08,
+      "std": 0.9999999812840193
+    },
+    "normalizer_scope": "Force statistics fitted with FeatureNormalizer; dummy static/state arrays unused",
+    "full_rollout_known_steps": 8,
+    "full_rollout_future_steps": [
+      65
+    ],
+    "relative_time_scale": 65.0
+  },
+  "scans": {
+    "anuga_history": {
+      "identical_prediction_anchors": true,
+      "config_overlays_in_order": [
+        "configs/model_node2.yaml",
+        "configs/ANUGA_History_Scan/anuga_fast_loader.yaml"
+      ],
+      "data_dir": "/scratch/09575/zeshengliu/COGENT-NeuralODE/data/ANUGA/simulation_data_merged",
+      "sbatch_default_world_size": 4,
+      "optimizer_steps_formula": "ceil(ceil(ceil(total_training_windows / world_size) / per_rank_batch_size) / grad_accum_steps)",
+      "training_sampler_note": "Distributed training retains PyTorch padding; evaluation never pads.",
+      "variants": [
+        {
+          "config": "configs/ANUGA_History_Scan/base_ANUGA_history1.yaml",
+          "history_len": 1,
+          "future_len": 64,
+          "windows_per_scenario": [
+            2
+          ],
+          "first_t_end": [
+            7
+          ],
+          "last_t_end": [
+            8
+          ],
+          "training_scenarios": 12,
+          "total_training_windows": 24,
+          "per_rank_batch_size": 1,
+          "grad_accum_steps": 1,
+          "optimizer_steps_per_epoch_single_process": 24,
+          "optimizer_steps_per_epoch_world_sizes": {
+            "1": 24,
+            "2": 12,
+            "4": 6,
+            "8": 3
+          }
+        },
+        {
+          "config": "configs/ANUGA_History_Scan/base_ANUGA_history2.yaml",
+          "history_len": 2,
+          "future_len": 64,
+          "windows_per_scenario": [
+            2
+          ],
+          "first_t_end": [
+            7
+          ],
+          "last_t_end": [
+            8
+          ],
+          "training_scenarios": 12,
+          "total_training_windows": 24,
+          "per_rank_batch_size": 1,
+          "grad_accum_steps": 1,
+          "optimizer_steps_per_epoch_single_process": 24,
+          "optimizer_steps_per_epoch_world_sizes": {
+            "1": 24,
+            "2": 12,
+            "4": 6,
+            "8": 3
+          }
+        },
+        {
+          "config": "configs/ANUGA_History_Scan/base_ANUGA_history3.yaml",
+          "history_len": 3,
+          "future_len": 64,
+          "windows_per_scenario": [
+            2
+          ],
+          "first_t_end": [
+            7
+          ],
+          "last_t_end": [
+            8
+          ],
+          "training_scenarios": 12,
+          "total_training_windows": 24,
+          "per_rank_batch_size": 1,
+          "grad_accum_steps": 1,
+          "optimizer_steps_per_epoch_single_process": 24,
+          "optimizer_steps_per_epoch_world_sizes": {
+            "1": 24,
+            "2": 12,
+            "4": 6,
+            "8": 3
+          }
+        },
+        {
+          "config": "configs/ANUGA_History_Scan/base_ANUGA_history4.yaml",
+          "history_len": 4,
+          "future_len": 64,
+          "windows_per_scenario": [
+            2
+          ],
+          "first_t_end": [
+            7
+          ],
+          "last_t_end": [
+            8
+          ],
+          "training_scenarios": 12,
+          "total_training_windows": 24,
+          "per_rank_batch_size": 1,
+          "grad_accum_steps": 1,
+          "optimizer_steps_per_epoch_single_process": 24,
+          "optimizer_steps_per_epoch_world_sizes": {
+            "1": 24,
+            "2": 12,
+            "4": 6,
+            "8": 3
+          }
+        },
+        {
+          "config": "configs/ANUGA_History_Scan/base_ANUGA_history5.yaml",
+          "history_len": 5,
+          "future_len": 64,
+          "windows_per_scenario": [
+            2
+          ],
+          "first_t_end": [
+            7
+          ],
+          "last_t_end": [
+            8
+          ],
+          "training_scenarios": 12,
+          "total_training_windows": 24,
+          "per_rank_batch_size": 1,
+          "grad_accum_steps": 1,
+          "optimizer_steps_per_epoch_single_process": 24,
+          "optimizer_steps_per_epoch_world_sizes": {
+            "1": 24,
+            "2": 12,
+            "4": 6,
+            "8": 3
+          }
+        },
+        {
+          "config": "configs/ANUGA_History_Scan/base_ANUGA_history6.yaml",
+          "history_len": 6,
+          "future_len": 64,
+          "windows_per_scenario": [
+            2
+          ],
+          "first_t_end": [
+            7
+          ],
+          "last_t_end": [
+            8
+          ],
+          "training_scenarios": 12,
+          "total_training_windows": 24,
+          "per_rank_batch_size": 1,
+          "grad_accum_steps": 1,
+          "optimizer_steps_per_epoch_single_process": 24,
+          "optimizer_steps_per_epoch_world_sizes": {
+            "1": 24,
+            "2": 12,
+            "4": 6,
+            "8": 3
+          }
+        },
+        {
+          "config": "configs/ANUGA_History_Scan/base_ANUGA_history7.yaml",
+          "history_len": 7,
+          "future_len": 64,
+          "windows_per_scenario": [
+            2
+          ],
+          "first_t_end": [
+            7
+          ],
+          "last_t_end": [
+            8
+          ],
+          "training_scenarios": 12,
+          "total_training_windows": 24,
+          "per_rank_batch_size": 1,
+          "grad_accum_steps": 1,
+          "optimizer_steps_per_epoch_single_process": 24,
+          "optimizer_steps_per_epoch_world_sizes": {
+            "1": 24,
+            "2": 12,
+            "4": 6,
+            "8": 3
+          }
+        },
+        {
+          "config": "configs/ANUGA_History_Scan/base_ANUGA_history8.yaml",
+          "history_len": 8,
+          "future_len": 64,
+          "windows_per_scenario": [
+            2
+          ],
+          "first_t_end": [
+            7
+          ],
+          "last_t_end": [
+            8
+          ],
+          "training_scenarios": 12,
+          "total_training_windows": 24,
+          "per_rank_batch_size": 1,
+          "grad_accum_steps": 1,
+          "optimizer_steps_per_epoch_single_process": 24,
+          "optimizer_steps_per_epoch_world_sizes": {
+            "1": 24,
+            "2": 12,
+            "4": 6,
+            "8": 3
+          }
+        }
+      ]
+    },
+    "issm_history": {
+      "identical_prediction_anchors": true,
+      "config_overlays_in_order": [
+        "configs/model_node2.yaml",
+        "configs/ISSM_History_Scan/issm_pig5000_fast_loader.yaml"
+      ],
+      "data_dir": "/scratch/09575/zeshengliu/COGENT-NeuralODE/data/ISSM/PIG_5000",
+      "sbatch_default_world_size": 4,
+      "optimizer_steps_formula": "ceil(ceil(ceil(total_training_windows / world_size) / per_rank_batch_size) / grad_accum_steps)",
+      "training_sampler_note": "Distributed training retains PyTorch padding; evaluation never pads.",
+      "variants": [
+        {
+          "config": "configs/ISSM_History_Scan/base_ISSM_history_1.yaml",
+          "history_len": 1,
+          "future_len": 120,
+          "windows_per_scenario": [
+            113
+          ],
+          "first_t_end": [
+            7
+          ],
+          "last_t_end": [
+            119
+          ],
+          "training_scenarios": 28,
+          "total_training_windows": 3164,
+          "per_rank_batch_size": 8,
+          "grad_accum_steps": 1,
+          "optimizer_steps_per_epoch_single_process": 396,
+          "optimizer_steps_per_epoch_world_sizes": {
+            "1": 396,
+            "2": 198,
+            "4": 99,
+            "8": 50
+          }
+        },
+        {
+          "config": "configs/ISSM_History_Scan/base_ISSM_history_2.yaml",
+          "history_len": 2,
+          "future_len": 120,
+          "windows_per_scenario": [
+            113
+          ],
+          "first_t_end": [
+            7
+          ],
+          "last_t_end": [
+            119
+          ],
+          "training_scenarios": 28,
+          "total_training_windows": 3164,
+          "per_rank_batch_size": 8,
+          "grad_accum_steps": 1,
+          "optimizer_steps_per_epoch_single_process": 396,
+          "optimizer_steps_per_epoch_world_sizes": {
+            "1": 396,
+            "2": 198,
+            "4": 99,
+            "8": 50
+          }
+        },
+        {
+          "config": "configs/ISSM_History_Scan/base_ISSM_history_3.yaml",
+          "history_len": 3,
+          "future_len": 120,
+          "windows_per_scenario": [
+            113
+          ],
+          "first_t_end": [
+            7
+          ],
+          "last_t_end": [
+            119
+          ],
+          "training_scenarios": 28,
+          "total_training_windows": 3164,
+          "per_rank_batch_size": 8,
+          "grad_accum_steps": 1,
+          "optimizer_steps_per_epoch_single_process": 396,
+          "optimizer_steps_per_epoch_world_sizes": {
+            "1": 396,
+            "2": 198,
+            "4": 99,
+            "8": 50
+          }
+        },
+        {
+          "config": "configs/ISSM_History_Scan/base_ISSM_history_4.yaml",
+          "history_len": 4,
+          "future_len": 120,
+          "windows_per_scenario": [
+            113
+          ],
+          "first_t_end": [
+            7
+          ],
+          "last_t_end": [
+            119
+          ],
+          "training_scenarios": 28,
+          "total_training_windows": 3164,
+          "per_rank_batch_size": 8,
+          "grad_accum_steps": 1,
+          "optimizer_steps_per_epoch_single_process": 396,
+          "optimizer_steps_per_epoch_world_sizes": {
+            "1": 396,
+            "2": 198,
+            "4": 99,
+            "8": 50
+          }
+        },
+        {
+          "config": "configs/ISSM_History_Scan/base_ISSM_history_5.yaml",
+          "history_len": 5,
+          "future_len": 120,
+          "windows_per_scenario": [
+            113
+          ],
+          "first_t_end": [
+            7
+          ],
+          "last_t_end": [
+            119
+          ],
+          "training_scenarios": 28,
+          "total_training_windows": 3164,
+          "per_rank_batch_size": 8,
+          "grad_accum_steps": 1,
+          "optimizer_steps_per_epoch_single_process": 396,
+          "optimizer_steps_per_epoch_world_sizes": {
+            "1": 396,
+            "2": 198,
+            "4": 99,
+            "8": 50
+          }
+        },
+        {
+          "config": "configs/ISSM_History_Scan/base_ISSM_history_6.yaml",
+          "history_len": 6,
+          "future_len": 120,
+          "windows_per_scenario": [
+            113
+          ],
+          "first_t_end": [
+            7
+          ],
+          "last_t_end": [
+            119
+          ],
+          "training_scenarios": 28,
+          "total_training_windows": 3164,
+          "per_rank_batch_size": 8,
+          "grad_accum_steps": 1,
+          "optimizer_steps_per_epoch_single_process": 396,
+          "optimizer_steps_per_epoch_world_sizes": {
+            "1": 396,
+            "2": 198,
+            "4": 99,
+            "8": 50
+          }
+        },
+        {
+          "config": "configs/ISSM_History_Scan/base_ISSM_history_7.yaml",
+          "history_len": 7,
+          "future_len": 120,
+          "windows_per_scenario": [
+            113
+          ],
+          "first_t_end": [
+            7
+          ],
+          "last_t_end": [
+            119
+          ],
+          "training_scenarios": 28,
+          "total_training_windows": 3164,
+          "per_rank_batch_size": 8,
+          "grad_accum_steps": 1,
+          "optimizer_steps_per_epoch_single_process": 396,
+          "optimizer_steps_per_epoch_world_sizes": {
+            "1": 396,
+            "2": 198,
+            "4": 99,
+            "8": 50
+          }
+        },
+        {
+          "config": "configs/ISSM_History_Scan/base_ISSM_history_8.yaml",
+          "history_len": 8,
+          "future_len": 120,
+          "windows_per_scenario": [
+            113
+          ],
+          "first_t_end": [
+            7
+          ],
+          "last_t_end": [
+            119
+          ],
+          "training_scenarios": 28,
+          "total_training_windows": 3164,
+          "per_rank_batch_size": 8,
+          "grad_accum_steps": 1,
+          "optimizer_steps_per_epoch_single_process": 396,
+          "optimizer_steps_per_epoch_world_sizes": {
+            "1": 396,
+            "2": 198,
+            "4": 99,
+            "8": 50
+          }
+        }
+      ]
+    },
+    "issm_future": {
+      "identical_prediction_anchors": true,
+      "config_overlays_in_order": [
+        "configs/model_node2.yaml",
+        "configs/ISSM_History_Scan/issm_pig5000_fast_loader.yaml"
+      ],
+      "data_dir": "/scratch/09575/zeshengliu/COGENT-NeuralODE/data/ISSM/PIG_5000",
+      "sbatch_default_world_size": 4,
+      "optimizer_steps_formula": "ceil(ceil(ceil(total_training_windows / world_size) / per_rank_batch_size) / grad_accum_steps)",
+      "training_sampler_note": "Distributed training retains PyTorch padding; evaluation never pads.",
+      "variants": [
+        {
+          "config": "configs/ISSM_Future_Len_Ablation/base_ISSM_history6_future30.yaml",
+          "history_len": 6,
+          "future_len": 30,
+          "windows_per_scenario": [
+            55
+          ],
+          "first_t_end": [
+            5
+          ],
+          "last_t_end": [
+            59
+          ],
+          "training_scenarios": 28,
+          "total_training_windows": 1540,
+          "per_rank_batch_size": 8,
+          "grad_accum_steps": 1,
+          "optimizer_steps_per_epoch_single_process": 193,
+          "optimizer_steps_per_epoch_world_sizes": {
+            "1": 193,
+            "2": 97,
+            "4": 49,
+            "8": 25
+          }
+        },
+        {
+          "config": "configs/ISSM_Future_Len_Ablation/base_ISSM_history6_future45.yaml",
+          "history_len": 6,
+          "future_len": 45,
+          "windows_per_scenario": [
+            55
+          ],
+          "first_t_end": [
+            5
+          ],
+          "last_t_end": [
+            59
+          ],
+          "training_scenarios": 28,
+          "total_training_windows": 1540,
+          "per_rank_batch_size": 8,
+          "grad_accum_steps": 1,
+          "optimizer_steps_per_epoch_single_process": 193,
+          "optimizer_steps_per_epoch_world_sizes": {
+            "1": 193,
+            "2": 97,
+            "4": 49,
+            "8": 25
+          }
+        },
+        {
+          "config": "configs/ISSM_Future_Len_Ablation/base_ISSM_history6_future60.yaml",
+          "history_len": 6,
+          "future_len": 60,
+          "windows_per_scenario": [
+            55
+          ],
+          "first_t_end": [
+            5
+          ],
+          "last_t_end": [
+            59
+          ],
+          "training_scenarios": 28,
+          "total_training_windows": 1540,
+          "per_rank_batch_size": 8,
+          "grad_accum_steps": 1,
+          "optimizer_steps_per_epoch_single_process": 193,
+          "optimizer_steps_per_epoch_world_sizes": {
+            "1": 193,
+            "2": 97,
+            "4": 49,
+            "8": 25
+          }
+        },
+        {
+          "config": "configs/ISSM_Future_Len_Ablation/base_ISSM_history6_future75.yaml",
+          "history_len": 6,
+          "future_len": 75,
+          "windows_per_scenario": [
+            55
+          ],
+          "first_t_end": [
+            5
+          ],
+          "last_t_end": [
+            59
+          ],
+          "training_scenarios": 28,
+          "total_training_windows": 1540,
+          "per_rank_batch_size": 8,
+          "grad_accum_steps": 1,
+          "optimizer_steps_per_epoch_single_process": 193,
+          "optimizer_steps_per_epoch_world_sizes": {
+            "1": 193,
+            "2": 97,
+            "4": 49,
+            "8": 25
+          }
+        },
+        {
+          "config": "configs/ISSM_Future_Len_Ablation/base_ISSM_history6_future90.yaml",
+          "history_len": 6,
+          "future_len": 90,
+          "windows_per_scenario": [
+            55
+          ],
+          "first_t_end": [
+            5
+          ],
+          "last_t_end": [
+            59
+          ],
+          "training_scenarios": 28,
+          "total_training_windows": 1540,
+          "per_rank_batch_size": 8,
+          "grad_accum_steps": 1,
+          "optimizer_steps_per_epoch_single_process": 193,
+          "optimizer_steps_per_epoch_world_sizes": {
+            "1": 193,
+            "2": 97,
+            "4": 49,
+            "8": 25
+          }
+        },
+        {
+          "config": "configs/ISSM_Future_Len_Ablation/base_ISSM_history6_future120.yaml",
+          "history_len": 6,
+          "future_len": 120,
+          "windows_per_scenario": [
+            55
+          ],
+          "first_t_end": [
+            5
+          ],
+          "last_t_end": [
+            59
+          ],
+          "training_scenarios": 28,
+          "total_training_windows": 1540,
+          "per_rank_batch_size": 8,
+          "grad_accum_steps": 1,
+          "optimizer_steps_per_epoch_single_process": 193,
+          "optimizer_steps_per_epoch_world_sizes": {
+            "1": 193,
+            "2": 97,
+            "4": 49,
+            "8": 25
+          }
+        },
+        {
+          "config": "configs/ISSM_Future_Len_Ablation/base_ISSM_history6_future150.yaml",
+          "history_len": 6,
+          "future_len": 150,
+          "windows_per_scenario": [
+            55
+          ],
+          "first_t_end": [
+            5
+          ],
+          "last_t_end": [
+            59
+          ],
+          "training_scenarios": 28,
+          "total_training_windows": 1540,
+          "per_rank_batch_size": 8,
+          "grad_accum_steps": 1,
+          "optimizer_steps_per_epoch_single_process": 193,
+          "optimizer_steps_per_epoch_world_sizes": {
+            "1": 193,
+            "2": 97,
+            "4": 49,
+            "8": 25
+          }
+        },
+        {
+          "config": "configs/ISSM_Future_Len_Ablation/base_ISSM_history6_future180.yaml",
+          "history_len": 6,
+          "future_len": 180,
+          "windows_per_scenario": [
+            55
+          ],
+          "first_t_end": [
+            5
+          ],
+          "last_t_end": [
+            59
+          ],
+          "training_scenarios": 28,
+          "total_training_windows": 1540,
+          "per_rank_batch_size": 8,
+          "grad_accum_steps": 1,
+          "optimizer_steps_per_epoch_single_process": 193,
+          "optimizer_steps_per_epoch_world_sizes": {
+            "1": 193,
+            "2": 97,
+            "4": 49,
+            "8": 25
+          }
+        }
+      ]
+    }
+  },
+  "relative_time_prefix": "Separate model regression/audit; this script does not run model inference."
+}

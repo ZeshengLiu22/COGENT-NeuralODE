@@ -296,17 +296,18 @@ Supported file types:
 - generic `.pt`
 - generic `.pth`
 
-Legacy ISSM state is:
+Canonical ISSM state is:
 
 - `vx`
 - `vy`
 - `thickness`
 
-Legacy ISSM forcing is:
+Canonical ISSM forcing is:
 
-- melt rate
-- surface mass balance
-- floating mask/value
+- basal melt rate, masked by `floating[0] < 0`
+- corresponding-time surface mass balance (SMB)
+
+Static channels are `[base0, surface0, speed0, initial_mask]`, where mask 1 means floating/ocean (`floating[0] < 0`). Future floating is never an input. Coordinates only construct auxiliary edge data, which NODE2 does not consume. Continuous time supplies the tenth semantic input. `configs/issm_paper_matched.yaml` uses H=1 and a single initial prediction origin for the paper information budget; history scans are a separate forecasting protocol. Old ISSM checkpoints require retraining.
 
 `dataset.issm` is currently reserved. It is passed through but no adapter options are read from it yet.
 
@@ -316,11 +317,11 @@ These live under `normalization:`.
 
 | Key | Supported values | What it does |
 | --- | --- | --- |
-| `std_floor` | positive float | Protects against tiny standard deviations when fitting train-split-only normalization. |
+| `std_floor` | positive float | Legacy serialized metadata; no physical-scale floor is applied. |
 
 The normalizer is fit only on training trajectories.
 
-If a channel standard deviation is smaller than `std_floor`, the code uses standard deviation `1.0` for that channel. That avoids exploding normalized values for nearly constant channels.
+Statistics use centered float64 accumulation. A channel is numerically constant only when its std is at most float64 epsilon times its absolute mean; those channels use denominator 1. All other channels use their true population std, including rainfall rates in m/s with std below 1e-5. Final stored statistics and transformed model inputs remain float32.
 
 ## Model Choice
 
@@ -447,7 +448,6 @@ The history encoder is shared by all three models.
 | `lstm_hidden_dim` | positive integer | Hidden size of the node-wise LSTM over history steps. |
 | `lstm_num_layers` | integer `>= 1` | Number of LSTM layers. |
 | `history_encoder_type` | `transformer`, `lstm` | Selects the temporal summarizer after per-step GNN encoding. |
-| `use_transformer_history` | `true` or `false` | Enables the temporal-only Transformer when `history_encoder_type: transformer`. |
 | `history_transformer_num_layers` | integer `>= 1` | Number of temporal Transformer encoder layers. |
 | `history_transformer_num_heads` | integer `>= 1` | Number of attention heads; must divide `static_embed_dim`. |
 | `history_transformer_ff_dim` | positive integer | Feed-forward width inside each temporal Transformer layer. |
@@ -498,7 +498,6 @@ These live under `solver:`.
 | `cde_method` | string passed to `torchcde.cdeint` | CDE solver for `ncde1`. Default in `model_ncde1.yaml` is `rk4`. |
 | `rtol` | positive float | Relative tolerance for adaptive solvers. |
 | `atol` | positive float | Absolute tolerance for adaptive solvers. |
-| `use_adjoint` | `true` or `false` | If `true`, uses adjoint-mode integration where supported. Saves memory, may be slower or less stable. |
 | `ode_options` | dictionary or `null` | Extra options passed to `torchdiffeq.odeint`. |
 | `cde_options` | dictionary or `null` | Extra options passed to `torchcde.cdeint`. |
 
@@ -518,7 +517,6 @@ solver:
   ode_method: midpoint
   cde_method: rk4
   interpolation: linear
-  use_adjoint: false
 ```
 
 For `NODE2` and `NCDE1`, the model config switches interpolation to:
@@ -533,7 +531,6 @@ Notes:
 - `linear` is simpler and cheaper.
 - `hermite_cubic_backward` gives a smoother control path.
 - `rtol` and `atol` mainly matter for adaptive solvers. Fixed-step methods may ignore them or use options differently depending on the backend library.
-- Keep `use_adjoint: false` for normal DDP runs unless you are explicitly testing adjoint behavior.
 
 ## Training Settings
 
@@ -642,12 +639,12 @@ Default:
 
 ```yaml
 evaluation:
-  checkpoint_metric: whole_rollout_rmse
+  checkpoint_metric: whole_rollout_norm_rmse
   full_rollout_on_val: true
   full_rollout_known_steps: null
 ```
 
-That means the best checkpoint is selected by validation full-rollout physical RMSE.
+That means the best checkpoint is selected by validation full-rollout normalized RMSE.
 
 If `full_rollout_known_steps` is `null`, full-rollout validation starts immediately after the configured history window. For example, `history_len: 4` predicts from step 5 onward.
 
@@ -757,7 +754,6 @@ model:
   use_relative_time: false
   history_encoder:
     history_encoder_type: lstm
-    use_transformer_history: false
     history_use_positional_encoding: false
 ```
 
@@ -939,10 +935,10 @@ This is useful for long trajectories where using every possible window is too sl
 ```yaml
 evaluation:
   full_rollout_on_val: false
-  checkpoint_metric: rmse
+  checkpoint_metric: norm_rmse
 ```
 
-This selects `best.pt` by validation fixed-window physical RMSE instead of full-rollout RMSE.
+This selects `best.pt` by validation fixed-window normalized RMSE instead of full-rollout RMSE.
 
 ### Normalized Metric Checkpoint Selection
 
@@ -959,7 +955,7 @@ This selects `best.pt` by normalized full-rollout RMSE.
 ```yaml
 evaluation:
   full_rollout_on_val: true
-  checkpoint_metric: whole_rollout_rmse
+  checkpoint_metric: whole_rollout_norm_rmse
   full_rollout_known_steps: 60
 ```
 
@@ -969,7 +965,7 @@ This selects `best.pt` using full-rollout validation that starts after 60 known 
 
 - Keep config merge order as base/history-scan config, then dataset config, then model config.
 - For NODE2 ablations, put exactly one `configs/NODE2_Upgrade1_Ablation/model_node2_*.yaml` overlay after `configs/model_node2.yaml` unless you intentionally want multiple overlays to override each other from left to right.
-- Use the same dataset and model config when evaluating a checkpoint.
+- Evaluation restores architecture, solver, normalizer, and exact scenario membership from the checkpoint. Use explicit runtime overrides for data relocation, output location, device, batch size, workers, or evaluation lengths; external YAML cannot change model behavior.
 - `NODE1` ignores `latent_dim` and decoder settings.
 - `dataset.anuga`, `dataset.adcirc`, and `dataset.issm` are currently placeholders with no active options.
 - `evaluation.num_workers` affects standalone fixed-window evaluation, but training-time validation/test loaders use `dataset.num_workers`.
@@ -979,3 +975,20 @@ This selects `best.pt` using full-rollout validation that starts after 60 known 
 - `full_rollout_known_steps` only changes training-time validation/test full-rollout start. Standalone full-rollout inference uses the CLI `--known-steps` flag.
 - Larger `future_len`, `history_len`, `latent_dim`, `hidden_dim`, or GNN layer counts usually increase memory use.
 - For large meshes, smaller `decoder_chunk_size` and `history_transformer_chunk_size` lower peak CUDA memory but can add extra kernel-launch overhead. Larger values can be faster if memory still fits.
+
+
+## Foundation correctness protocol
+
+Relative time is `t / model.relative_time_scale`, independent of the requested horizon. The dataset overlays set 180 for standard ISSM rollouts (240 snapshots, 60 known) and 65 for ANUGA (73 snapshots, 8 known); the model overlay leaves this value intact. The dedicated ISSM paper-matched initial-state protocol uses scale 239. Load `configs/issm_paper_matched.yaml` followed by `configs/model_node2.yaml`; omit the standard `configs/issm.yaml` overlay because it sets the 60-known-step forecasting protocol. A positive finite scale is required when relative time is enabled.
+
+Formal scans use `dataset.window_reference`: H8/K64 for ANUGA histories, H8/K120 for ISSM histories, and H6/K180 for ISSM futures. All variants use the same prediction origins. Without this field the original window enumeration is retained. Training loaders automatically disable persistent workers when epoch window resampling is configured.
+
+`evaluation.amp_mode: none` is independent of training `amp.mode: bf16`. Both checkpoint-selection validation and final testing default to FP32. Physical RMSE/MAE, per-channel errors, and physical horizon curves remain in reports; ISSM adds `speed_rmse_m_per_yr` and `thickness_rmse_m` (with whole-rollout/final-step prefixes). Only normalized error selects the checkpoint.
+
+NODE2 uses ordinary `odeint` backpropagation. Fixed-step midpoint remains the formal solver; tolerances do not add adaptive error control. After clean retraining, run:
+
+```bash
+python scripts/check_solver_convergence.py --checkpoint outputs/RUN/best.pt --device cpu
+```
+
+The validation-only diagnostic writes `solver_convergence.json` with baseline, 0.5, and 0.25 step results. Review numerical prediction differences against model error before changing the formal solver.
