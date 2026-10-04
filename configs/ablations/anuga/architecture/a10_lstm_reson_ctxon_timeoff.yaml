@@ -1,0 +1,6 @@
+model:
+  history_encoder:
+    history_encoder_type: lstm
+  use_residual_decoder: true
+  use_history_in_ode: true
+  use_relative_time: false

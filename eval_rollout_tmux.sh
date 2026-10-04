@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="${PROJECT_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
 cd "$PROJECT_ROOT"
 PYTHON_BIN="${PYTHON_BIN:-$(command -v python)}"
 SESSION_NAME="${SESSION_NAME:-}"
@@ -32,7 +32,7 @@ Options:
   --amp-mode none|bf16|fp16   Evaluation precision
   --gpu N                    CUDA_VISIBLE_DEVICES
   --session-name NAME         Detached tmux session name
-  --inside-tmux              Run directly (also used by sequential sweeps)
+  --inside-tmux              Run directly (also used for rollout-start robustness)
 EOF
 }
 

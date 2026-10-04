@@ -1,0 +1,179 @@
+test_architecture_is_explicit_complete_factorial (test_configs.ConfigTest.test_architecture_is_explicit_complete_factorial) ... ok
+test_canonical_protocols_and_epoch_budgets (test_configs.ConfigTest.test_canonical_protocols_and_epoch_budgets) ... ok
+test_explicit_controls_equal_canonical (test_configs.ConfigTest.test_explicit_controls_equal_canonical) ... ok
+test_layer_ownership_and_dataset_separation (test_configs.ConfigTest.test_layer_ownership_and_dataset_separation) ... ok
+test_left_to_right_stack (test_configs.ConfigTest.test_left_to_right_stack) ... ok
+test_recursive_merge_preserves_siblings_and_inputs (test_configs.ConfigTest.test_recursive_merge_preserves_siblings_and_inputs) ... ok
+test_retired_controls_stay_out_of_active_sources (test_configs.ConfigTest.test_retired_controls_stay_out_of_active_sources) ... ok
+test_runtime_is_safe_and_contains_only_loader_settings (test_configs.ConfigTest.test_runtime_is_safe_and_contains_only_loader_settings) ... ok
+test_tc_modes_preserve_corrected_parameters (test_configs.ConfigTest.test_tc_modes_preserve_corrected_parameters) ... ok
+test_temporal_overlays_only_change_their_axis (test_configs.ConfigTest.test_temporal_overlays_only_change_their_axis) ... ok
+test_full_rollout_uses_embedded_split_after_relocation (test_foundation_checkpoint.CheckpointFoundationTest.test_full_rollout_uses_embedded_split_after_relocation) ... 2026-10-04 13:26:09,575 | INFO | Using evaluation device: cpu
+2026-10-04 13:26:09,575 | INFO | Full-rollout evaluation context: history_len=2 known_steps=2 rollout_steps=4..4 plot_max_lead_step=all (training config: history_len=2 future_len=2)
+2026-10-04 13:26:09,575 | INFO | Evaluation provenance: checkpoint=/tmp/tmp5vjs_qx3/best.pt split_manifest=checkpoint.split_manifest
+2026-10-04 13:26:11,067 | INFO | Full-rollout metrics: {'whole_rollout_rmse': 0.5326861163304916, 'whole_rollout_mae': 0.46608054265379906, 'whole_rollout_norm_rmse': 1.543099701953638, 'whole_rollout_norm_mae': 1.3501548552885652, 'whole_rollout_rmse_ch0': 0.5326861163304916, 'whole_rollout_mae_ch0': 0.46608054265379906, 'whole_rollout_norm_rmse_ch0': 1.543099701953638, 'whole_rollout_norm_mae_ch0': 1.3501548552885652, 'final_step_rmse': 0.8137034060404743, 'final_step_mae': 0.8127840459346771, 'final_step_norm_rmse': 2.3571582743495596, 'final_step_norm_mae': 2.354495048522949, 'final_step_rmse_ch0': 0.8137034060404743, 'final_step_mae_ch0': 0.8127840459346771, 'final_step_norm_rmse_ch0': 2.3571582743495596, 'final_step_norm_mae_ch0': 2.354495048522949, 'horizon_lead_steps': [1, 2, 3, 4], 'horizon_rmse_curve': [0.12397101435098429, 0.34977468772359505, 0.5789590802050077, 0.8137034060404743], 'horizon_norm_rmse_curve': [0.3591226423378223, 1.013236836331002, 1.677144499321772, 2.3571582743495596]}
+2026-10-04 13:26:11,067 | INFO | Detailed metric table:
+scope          channel    count  phys_rmse  phys_mae  norm_rmse  norm_mae
+-------------  ---------  -----  ---------  --------  ---------  --------
+whole_rollout  aggregate  8      0.532686   0.466081  1.543100   1.350155
+whole_rollout  surge      8      0.532686   0.466081  1.543100   1.350155
+final_step     aggregate  2      0.813703   0.812784  2.357158   2.354495
+final_step     surge      2      0.813703   0.812784  2.357158   2.354495
+2026-10-04 13:26:11,067 | INFO | Saved evaluation artifacts: {'metrics_json': '/tmp/tmp5vjs_qx3/rollout_artifacts/best.test.known2.full_rollout_metrics.json', 'predictions_npz': '/tmp/tmp5vjs_qx3/rollout_artifacts/best.test.known2.full_rollout_predictions.npz', 'predictions_meta_json': '/tmp/tmp5vjs_qx3/rollout_artifacts/best.test.known2.full_rollout_predictions_meta.json', 'metric_table_csv': '/tmp/tmp5vjs_qx3/rollout_artifacts/best.test.known2.full_rollout_metric_table.csv', 'trajectory_metrics_csv': '/tmp/tmp5vjs_qx3/rollout_artifacts/best.test.known2.full_rollout_trajectory_metrics.csv', 'trajectory_metrics_plot': '/tmp/tmp5vjs_qx3/rollout_artifacts/best.test.known2.full_rollout_trajectory_metrics.png', 'summary_table_csv': '/tmp/tmp5vjs_qx3/rollout_artifacts/best.test.known2.full_rollout_summary_table.csv', 'leadtime_metrics_csv': '/tmp/tmp5vjs_qx3/rollout_artifacts/best.test.known2.full_rollout_leadtime_metrics.csv', 'leadtime_metrics_plot': '/tmp/tmp5vjs_qx3/rollout_artifacts/best.test.known2.full_rollout_leadtime_metrics.png', 'leadtime_rmse_curve_csv': '/tmp/tmp5vjs_qx3/rollout_artifacts/best.test.known2.full_rollout_leadtime_rmse_curve.csv', 'leadtime_rmse_curve_npz': '/tmp/tmp5vjs_qx3/rollout_artifacts/best.test.known2.full_rollout_leadtime_rmse_curve.npz', 'leadtime_mae_curve_csv': '/tmp/tmp5vjs_qx3/rollout_artifacts/best.test.known2.full_rollout_leadtime_mae_curve.csv', 'leadtime_mae_curve_npz': '/tmp/tmp5vjs_qx3/rollout_artifacts/best.test.known2.full_rollout_leadtime_mae_curve.npz'}
+ok
+test_inference_start_override_does_not_change_history_or_time_scale (test_foundation_checkpoint.CheckpointFoundationTest.test_inference_start_override_does_not_change_history_or_time_scale) ... 2026-10-04 13:26:11,100 | INFO | Using evaluation device: cpu
+2026-10-04 13:26:11,100 | INFO | Full-rollout evaluation context: history_len=2 known_steps=4 rollout_steps=2..2 plot_max_lead_step=all (training config: history_len=2 future_len=2)
+2026-10-04 13:26:11,100 | INFO | Evaluation provenance: checkpoint=/tmp/tmpialufmlv/best.pt split_manifest=checkpoint.split_manifest
+2026-10-04 13:26:11,974 | INFO | Full-rollout metrics: {'whole_rollout_rmse': 0.2732593568026457, 'whole_rollout_mae': 0.24787569046020508, 'whole_rollout_norm_rmse': 0.791585151809186, 'whole_rollout_norm_mae': 0.7180530428886414, 'whole_rollout_rmse_ch0': 0.2732593568026457, 'whole_rollout_mae_ch0': 0.24787569046020508, 'whole_rollout_norm_rmse_ch0': 0.791585151809186, 'whole_rollout_norm_mae_ch0': 0.7180530428886414, 'final_step_rmse': 0.3626634434907147, 'final_step_mae': 0.3624724745750427, 'final_step_norm_rmse': 1.050573360873318, 'final_step_norm_mae': 1.050020158290863, 'final_step_rmse_ch0': 0.3626634434907147, 'final_step_mae_ch0': 0.3624724745750427, 'final_step_norm_rmse_ch0': 1.050573360873318, 'final_step_norm_mae_ch0': 1.050020158290863, 'horizon_lead_steps': [1, 2], 'horizon_rmse_curve': [0.13347875829452574, 0.3626634434907147], 'horizon_norm_rmse_curve': [0.3866648659406293, 1.050573360873318]}
+2026-10-04 13:26:11,974 | INFO | Detailed metric table:
+scope          channel    count  phys_rmse  phys_mae  norm_rmse  norm_mae
+-------------  ---------  -----  ---------  --------  ---------  --------
+whole_rollout  aggregate  4      0.273259   0.247876  0.791585   0.718053
+whole_rollout  surge      4      0.273259   0.247876  0.791585   0.718053
+final_step     aggregate  2      0.362663   0.362472  1.050573   1.050020
+final_step     surge      2      0.362663   0.362472  1.050573   1.050020
+2026-10-04 13:26:11,974 | INFO | Saved evaluation artifacts: {'metrics_json': '/tmp/tmpialufmlv/start_override/best.test.known4.full_rollout_metrics.json', 'predictions_npz': '/tmp/tmpialufmlv/start_override/best.test.known4.full_rollout_predictions.npz', 'predictions_meta_json': '/tmp/tmpialufmlv/start_override/best.test.known4.full_rollout_predictions_meta.json', 'metric_table_csv': '/tmp/tmpialufmlv/start_override/best.test.known4.full_rollout_metric_table.csv', 'trajectory_metrics_csv': '/tmp/tmpialufmlv/start_override/best.test.known4.full_rollout_trajectory_metrics.csv', 'trajectory_metrics_plot': '/tmp/tmpialufmlv/start_override/best.test.known4.full_rollout_trajectory_metrics.png', 'summary_table_csv': '/tmp/tmpialufmlv/start_override/best.test.known4.full_rollout_summary_table.csv', 'leadtime_metrics_csv': '/tmp/tmpialufmlv/start_override/best.test.known4.full_rollout_leadtime_metrics.csv', 'leadtime_metrics_plot': '/tmp/tmpialufmlv/start_override/best.test.known4.full_rollout_leadtime_metrics.png', 'leadtime_rmse_curve_csv': '/tmp/tmpialufmlv/start_override/best.test.known4.full_rollout_leadtime_rmse_curve.csv', 'leadtime_rmse_curve_npz': '/tmp/tmpialufmlv/start_override/best.test.known4.full_rollout_leadtime_rmse_curve.npz', 'leadtime_mae_curve_csv': '/tmp/tmpialufmlv/start_override/best.test.known4.full_rollout_leadtime_mae_curve.csv', 'leadtime_mae_curve_npz': '/tmp/tmpialufmlv/start_override/best.test.known4.full_rollout_leadtime_mae_curve.npz'}
+ok
+test_manifest_rejects_duplicate_or_missing_scenarios (test_foundation_checkpoint.CheckpointFoundationTest.test_manifest_rejects_duplicate_or_missing_scenarios) ... ok
+test_model_config_is_authoritative (test_foundation_checkpoint.CheckpointFoundationTest.test_model_config_is_authoritative) ... ok
+test_only_explicit_runtime_overrides_and_fp32_default (test_foundation_checkpoint.CheckpointFoundationTest.test_only_explicit_runtime_overrides_and_fp32_default) ... ok
+test_saved_split_survives_extra_files_and_relocation (test_foundation_checkpoint.CheckpointFoundationTest.test_saved_split_survives_extra_files_and_relocation) ... ok
+test_solver_diagnostic_runs_from_checkpoint_and_restores_solver (test_foundation_checkpoint.CheckpointFoundationTest.test_solver_diagnostic_runs_from_checkpoint_and_restores_solver) ... 2026-10-04 13:26:12,135 | INFO | Saved validation midpoint convergence diagnostic: /tmp/tmp7moifh8f/solver_convergence.json
+2026-10-04 13:26:12,135 | INFO | Half-to-quarter normalized change / model error: 0.000499058591164683
+ok
+test_standalone_evaluation_matches_evaluator_without_config (test_foundation_checkpoint.CheckpointFoundationTest.test_standalone_evaluation_matches_evaluator_without_config) ... 2026-10-04 13:26:12,193 | INFO | Using evaluation device: cpu
+2026-10-04 13:26:12,193 | INFO | Full-rollout evaluation context: history_len=2 known_steps=2 rollout_steps=4..4 plot_max_lead_step=all (training config: history_len=2 future_len=2)
+2026-10-04 13:26:12,193 | INFO | Evaluation provenance: checkpoint=/tmp/tmpfi59ehh7/best.pt split_manifest=checkpoint.split_manifest
+2026-10-04 13:26:13,096 | INFO | Full-rollout metrics: {'whole_rollout_rmse': 0.5326861163304916, 'whole_rollout_mae': 0.46608054265379906, 'whole_rollout_norm_rmse': 1.543099701953638, 'whole_rollout_norm_mae': 1.3501548552885652, 'whole_rollout_rmse_ch0': 0.5326861163304916, 'whole_rollout_mae_ch0': 0.46608054265379906, 'whole_rollout_norm_rmse_ch0': 1.543099701953638, 'whole_rollout_norm_mae_ch0': 1.3501548552885652, 'final_step_rmse': 0.8137034060404743, 'final_step_mae': 0.8127840459346771, 'final_step_norm_rmse': 2.3571582743495596, 'final_step_norm_mae': 2.354495048522949, 'final_step_rmse_ch0': 0.8137034060404743, 'final_step_mae_ch0': 0.8127840459346771, 'final_step_norm_rmse_ch0': 2.3571582743495596, 'final_step_norm_mae_ch0': 2.354495048522949, 'horizon_lead_steps': [1, 2, 3, 4], 'horizon_rmse_curve': [0.12397101435098429, 0.34977468772359505, 0.5789590802050077, 0.8137034060404743], 'horizon_norm_rmse_curve': [0.3591226423378223, 1.013236836331002, 1.677144499321772, 2.3571582743495596]}
+2026-10-04 13:26:13,096 | INFO | Detailed metric table:
+scope          channel    count  phys_rmse  phys_mae  norm_rmse  norm_mae
+-------------  ---------  -----  ---------  --------  ---------  --------
+whole_rollout  aggregate  8      0.532686   0.466081  1.543100   1.350155
+whole_rollout  surge      8      0.532686   0.466081  1.543100   1.350155
+final_step     aggregate  2      0.813703   0.812784  2.357158   2.354495
+final_step     surge      2      0.813703   0.812784  2.357158   2.354495
+2026-10-04 13:26:13,096 | INFO | Saved evaluation artifacts: {'metrics_json': '/tmp/tmpfi59ehh7/rollout_artifacts/best.test.known2.full_rollout_metrics.json', 'predictions_npz': '/tmp/tmpfi59ehh7/rollout_artifacts/best.test.known2.full_rollout_predictions.npz', 'predictions_meta_json': '/tmp/tmpfi59ehh7/rollout_artifacts/best.test.known2.full_rollout_predictions_meta.json', 'metric_table_csv': '/tmp/tmpfi59ehh7/rollout_artifacts/best.test.known2.full_rollout_metric_table.csv', 'trajectory_metrics_csv': '/tmp/tmpfi59ehh7/rollout_artifacts/best.test.known2.full_rollout_trajectory_metrics.csv', 'trajectory_metrics_plot': '/tmp/tmpfi59ehh7/rollout_artifacts/best.test.known2.full_rollout_trajectory_metrics.png', 'summary_table_csv': '/tmp/tmpfi59ehh7/rollout_artifacts/best.test.known2.full_rollout_summary_table.csv', 'leadtime_metrics_csv': '/tmp/tmpfi59ehh7/rollout_artifacts/best.test.known2.full_rollout_leadtime_metrics.csv', 'leadtime_metrics_plot': '/tmp/tmpfi59ehh7/rollout_artifacts/best.test.known2.full_rollout_leadtime_metrics.png', 'leadtime_rmse_curve_csv': '/tmp/tmpfi59ehh7/rollout_artifacts/best.test.known2.full_rollout_leadtime_rmse_curve.csv', 'leadtime_rmse_curve_npz': '/tmp/tmpfi59ehh7/rollout_artifacts/best.test.known2.full_rollout_leadtime_rmse_curve.npz', 'leadtime_mae_curve_csv': '/tmp/tmpfi59ehh7/rollout_artifacts/best.test.known2.full_rollout_leadtime_mae_curve.csv', 'leadtime_mae_curve_npz': '/tmp/tmpfi59ehh7/rollout_artifacts/best.test.known2.full_rollout_leadtime_mae_curve.npz'}
+ok
+test_training_entrypoint_records_stack_and_builds_one_loader (test_foundation_checkpoint.CheckpointFoundationTest.test_training_entrypoint_records_stack_and_builds_one_loader) ... 2026-10-04 13:26:13,147 | INFO | training_series: scenarios=1 per_scenario_per_epoch=None total_per_epoch=3 natural_anchors=3
+2026-10-04 13:26:13,147 | INFO | dataloader_settings={'num_workers': 0, 'pin_memory': False, 'prefetch_factor': 2, 'persistent_workers': False}
+2026-10-04 13:26:13,260 | INFO | Epoch 001 | train_horizon_max=2/2 | train_norm_mse=1.890493 | train_phys_rmse=0.474641 | val_rollout_norm_rmse=1.944245 | val_rollout_phys_rmse=0.671163 | best_whole_rollout_norm_rmse=1.944245
+ok
+test_canonical_dimensions_initial_features_and_state (test_foundation_datasets.ISSMProtocolTest.test_canonical_dimensions_initial_features_and_state) ... ok
+test_future_floating_cannot_change_any_model_input (test_foundation_datasets.ISSMProtocolTest.test_future_floating_cannot_change_any_model_input) ... ok
+test_generic_legacy_dimensions_are_rejected (test_foundation_datasets.ISSMProtocolTest.test_generic_legacy_dimensions_are_rejected) ... ok
+test_initial_floating_changes_binary_and_melt_masks (test_foundation_datasets.ISSMProtocolTest.test_initial_floating_changes_binary_and_melt_masks) ... ok
+test_only_initial_static_quantities_are_used (test_foundation_datasets.ISSMProtocolTest.test_only_initial_static_quantities_are_used) ... ok
+test_published_rate_split_is_unchanged (test_foundation_datasets.ISSMProtocolTest.test_published_rate_split_is_unchanged) ... ok
+test_distributed_loader_is_only_for_training_windows (test_foundation_datasets.LoaderRepairTest.test_distributed_loader_is_only_for_training_windows) ... ok
+test_persistent_workers_disabled_only_for_training_resampling (test_foundation_datasets.LoaderRepairTest.test_persistent_workers_disabled_only_for_training_resampling) ... ok
+test_constant_detection_is_independent_of_physical_scale (test_foundation_datasets.NormalizationTest.test_constant_detection_is_independent_of_physical_scale) ... ok
+test_small_real_variance_constant_channels_and_roundtrip (test_foundation_datasets.NormalizationTest.test_small_real_variance_constant_channels_and_roundtrip) ... ok
+test_absolute_rollout_start_selects_the_preceding_h_true_states (test_foundation_datasets.RolloutIndexingTest.test_absolute_rollout_start_selects_the_preceding_h_true_states) ... ok
+test_k_does_not_limit_rollout_or_require_any_training_windows (test_foundation_datasets.RolloutIndexingTest.test_k_does_not_limit_rollout_or_require_any_training_windows) ... ok
+test_known_steps_must_include_history_and_leave_a_future (test_foundation_datasets.RolloutIndexingTest.test_known_steps_must_include_history_and_leave_a_future) ... ok
+test_canonical_protocols_and_null_horizon_max (test_foundation_datasets.TemporalAuditTest.test_canonical_protocols_and_null_horizon_max) ... ok
+test_invalid_temporal_settings_are_rejected (test_foundation_datasets.TemporalAuditTest.test_invalid_temporal_settings_are_rejected) ... ok
+test_training_k_and_rollout_start_are_independent (test_foundation_datasets.TemporalAuditTest.test_training_k_and_rollout_start_are_independent) ... ok
+test_enumeration_has_only_h_k_stride_and_inclusive_valid_anchors (test_foundation_datasets.TrainingWindowTest.test_enumeration_has_only_h_k_stride_and_inclusive_valid_anchors) ... ok
+test_h_and_k_naturally_change_training_anchors (test_foundation_datasets.TrainingWindowTest.test_h_and_k_naturally_change_training_anchors) ... ok
+test_h_k_and_stride_must_be_positive (test_foundation_datasets.TrainingWindowTest.test_h_k_and_stride_must_be_positive) ... ok
+test_active_model_only_imports_standard_ode_solver (test_foundation_model.FoundationModelTest.test_active_model_only_imports_standard_ode_solver) ... ok
+test_dataset_time_scale_survives_model_overlay (test_foundation_model.FoundationModelTest.test_dataset_time_scale_survives_model_overlay) ... ok
+test_history_and_future_variants_have_natural_training_anchors (test_foundation_model.FoundationModelTest.test_history_and_future_variants_have_natural_training_anchors) ... ok
+test_invalid_relative_time_scale_is_rejected (test_foundation_model.FoundationModelTest.test_invalid_relative_time_scale_is_rejected) ... ok
+test_relative_time_prediction_prefix_is_independent_of_horizon (test_foundation_model.FoundationModelTest.test_relative_time_prediction_prefix_is_independent_of_horizon) ... ok
+test_relative_time_uses_fixed_scale_and_is_not_endpoint_clipped (test_foundation_model.FoundationModelTest.test_relative_time_uses_fixed_scale_and_is_not_endpoint_clipped) ... ok
+test_accumulation_tail_uses_actual_group_size (test_foundation_training.FoundationTrainingTest.test_accumulation_tail_uses_actual_group_size) ... ok
+test_disabled_temporal_matches_baseline_updates (test_foundation_training.FoundationTrainingTest.test_disabled_temporal_matches_baseline_updates) ... ok
+test_evaluation_bypasses_ddp_forward_collectives (test_foundation_training.FoundationTrainingTest.test_evaluation_bypasses_ddp_forward_collectives) ... ok
+test_evaluation_fp32_independent_of_bf16_training (test_foundation_training.FoundationTrainingTest.test_evaluation_fp32_independent_of_bf16_training) ... ok
+test_issm_named_metrics_use_derived_physical_speed (test_foundation_training.FoundationTrainingTest.test_issm_named_metrics_use_derived_physical_speed) ... ok
+test_random_pair_generator_seed_is_rank_specific_and_reproducible (test_foundation_training.FoundationTrainingTest.test_random_pair_generator_seed_is_rank_specific_and_reproducible) ... ok
+test_random_pair_uses_graph_membership_and_preserves_dropout_rng (test_foundation_training.FoundationTrainingTest.test_random_pair_uses_graph_membership_and_preserves_dropout_rng) ... ok
+test_temporal_fit_logs_scaled_objectives_and_preserves_metrics (test_foundation_training.FoundationTrainingTest.test_temporal_fit_logs_scaled_objectives_and_preserves_metrics) ... ok
+test_temporal_gradient_accumulation_includes_tail (test_foundation_training.FoundationTrainingTest.test_temporal_gradient_accumulation_includes_tail) ... ok
+test_active_shell_syntax (test_launchers.LauncherTest.test_active_shell_syntax) ... ok
+test_ad_hoc_launchers_print_protocol_and_named_overlays (test_launchers.LauncherTest.test_ad_hoc_launchers_print_protocol_and_named_overlays) ... ok
+test_all_formal_commands_and_independent_phase_controls (test_launchers.LauncherTest.test_all_formal_commands_and_independent_phase_controls) ... ok
+test_exact_four_launcher_trees_and_phase_counts (test_launchers.LauncherTest.test_exact_four_launcher_trees_and_phase_counts) ... ok
+test_formal_scripts_are_standalone_and_slurm_roots_are_explicit (test_launchers.LauncherTest.test_formal_scripts_are_standalone_and_slurm_roots_are_explicit) ... ok
+test_historical_launchers_are_retired (test_launchers.LauncherTest.test_historical_launchers_are_retired) ... ok
+test_phases_two_through_four_fail_before_environment_or_training (test_launchers.LauncherTest.test_phases_two_through_four_fail_before_environment_or_training) ... ok
+test_rollout_start_robustness_uses_same_checkpoint_without_training (test_launchers.LauncherTest.test_rollout_start_robustness_uses_same_checkpoint_without_training) ... ok
+test_absolute_and_physical_time_comparisons_reject_silent_clipping (test_rollout_artifacts.RolloutArtifactTests.test_absolute_and_physical_time_comparisons_reject_silent_clipping) ... ok
+test_arbitrary_lead_absolute_and_actual_time_slices (test_rollout_artifacts.RolloutArtifactTests.test_arbitrary_lead_absolute_and_actual_time_slices) ... ok
+test_complete_artifacts_exactly_recompute_direct_metrics (test_rollout_artifacts.RolloutArtifactTests.test_complete_artifacts_exactly_recompute_direct_metrics) ... ok
+test_ddp_nonpadding_shards_sum_exact_statistics_with_empty_rank (test_rollout_artifacts.RolloutArtifactTests.test_ddp_nonpadding_shards_sum_exact_statistics_with_empty_rank) ... ok
+test_duplicate_node_time_rows_fail_even_if_marginal_counts_match (test_rollout_artifacts.RolloutArtifactTests.test_duplicate_node_time_rows_fail_even_if_marginal_counts_match) ... ok
+test_equal_lead_and_common_tail_with_scenario_reordering (test_rollout_artifacts.RolloutArtifactTests.test_equal_lead_and_common_tail_with_scenario_reordering) ... ok
+test_invalid_known_steps_rejected_in_both_inference_paths (test_rollout_artifacts.RolloutArtifactTests.test_invalid_known_steps_rejected_in_both_inference_paths) ... ok
+test_requested_240_step_comparisons (test_rollout_artifacts.RolloutArtifactTests.test_requested_240_step_comparisons) ... ok
+test_scenario_time_node_channel_mismatches_fail (test_rollout_artifacts.RolloutArtifactTests.test_scenario_time_node_channel_mismatches_fail) ... ok
+test_anuga_postprocess_generates_flood_maps (test_smoke.SmokeTest.test_anuga_postprocess_generates_flood_maps) ... ok
+test_chunked_decoder_matches_unchunked (test_smoke.SmokeTest.test_chunked_decoder_matches_unchunked) ... ok
+test_chunked_transformer_history_matches_unchunked (test_smoke.SmokeTest.test_chunked_transformer_history_matches_unchunked) ... ok
+test_datasets_and_models (test_smoke.SmokeTest.test_datasets_and_models) ... ok
+test_eval_artifacts_are_saved_for_rollout (test_smoke.SmokeTest.test_eval_artifacts_are_saved_for_rollout) ... ok
+test_evaluator_reports_normalized_and_physical_metrics (test_smoke.SmokeTest.test_evaluator_reports_normalized_and_physical_metrics) ... ok
+test_full_rollout_anuga_export_saves_every_future_step (test_smoke.SmokeTest.test_full_rollout_anuga_export_saves_every_future_step) ... ok
+test_horizon_curriculum_reaches_full_horizon_after_warmup (test_smoke.SmokeTest.test_horizon_curriculum_reaches_full_horizon_after_warmup) ... ok
+test_node2_backward_reaches_encoder_dynamics_and_decoder (test_smoke.SmokeTest.test_node2_backward_reaches_encoder_dynamics_and_decoder) ... ok
+test_node2_checkpoint_roundtrip_after_forward (test_smoke.SmokeTest.test_node2_checkpoint_roundtrip_after_forward) ... ok
+test_node2_integrates_from_zero_then_drops_initial_state (test_smoke.SmokeTest.test_node2_integrates_from_zero_then_drops_initial_state) ... ok
+test_node2_upgrade_flags_and_baseline_ablation (test_smoke.SmokeTest.test_node2_upgrade_flags_and_baseline_ablation) ... ok
+test_residual_decoder_anchors_predictions_to_last_observed_state (test_smoke.SmokeTest.test_residual_decoder_anchors_predictions_to_last_observed_state) ... ok
+test_rollout_preserves_saved_split_order (test_smoke.SmokeTest.test_rollout_preserves_saved_split_order) ... ok
+test_temporal_training_checkpoint_smoke_for_anuga_and_issm (test_smoke.SmokeTest.test_temporal_training_checkpoint_smoke_for_anuga_and_issm) ... ok
+test_training_horizon_truncation_keeps_future_fields_aligned (test_smoke.SmokeTest.test_training_horizon_truncation_keeps_future_fields_aligned) ... ok
+test_training_saves_and_reloads_checkpoint_with_curriculum (test_smoke.SmokeTest.test_training_saves_and_reloads_checkpoint_with_curriculum) ... ok
+test_invalid_composite_weights (test_temporal_losses.TemporalConfigTest.test_invalid_composite_weights) ... ok
+test_invalid_general_config (test_temporal_losses.TemporalConfigTest.test_invalid_general_config) ... ok
+test_invalid_random_pair_config (test_temporal_losses.TemporalConfigTest.test_invalid_random_pair_config) ... ok
+test_invalid_rate_config (test_temporal_losses.TemporalConfigTest.test_invalid_rate_config) ... ok
+test_invalid_rmse_epsilon (test_temporal_losses.TemporalConfigTest.test_invalid_rmse_epsilon) ... ok
+test_six_overlays_validate_and_merge_last (test_temporal_losses.TemporalConfigTest.test_six_overlays_validate_and_merge_last) ... ok
+test_unused_subsections_are_ignored (test_temporal_losses.TemporalConfigTest.test_unused_subsections_are_ignored) ... ok
+test_all_modes_backpropagate_finite_nonzero_gradients (test_temporal_losses.TemporalLossTest.test_all_modes_backpropagate_finite_nonzero_gradients) ... ok
+test_composite_formulations_use_configured_weights (test_temporal_losses.TemporalLossTest.test_composite_formulations_use_configured_weights) ... ok
+test_constant_bias_changes_state_but_not_evolution (test_temporal_losses.TemporalLossTest.test_constant_bias_changes_state_but_not_evolution) ... ok
+test_disabled_or_absent_config_preserves_baseline_gradients_and_rng (test_temporal_losses.TemporalLossTest.test_disabled_or_absent_config_preserves_baseline_gradients_and_rng) ... ok
+test_dispatcher_returns_raw_loss_independent_of_overall_weight (test_temporal_losses.TemporalLossTest.test_dispatcher_returns_raw_loss_independent_of_overall_weight) ... ok
+test_graph_sampling_preserves_node_average_and_no_replacement (test_temporal_losses.TemporalLossTest.test_graph_sampling_preserves_node_average_and_no_replacement) ... ok
+test_increment_modes_do_not_require_time (test_temporal_losses.TemporalLossTest.test_increment_modes_do_not_require_time) ... ok
+test_invalid_graph_membership_fails_clearly (test_temporal_losses.TemporalLossTest.test_invalid_graph_membership_fails_clearly) ... ok
+test_invalid_time_grids_fail_clearly (test_temporal_losses.TemporalLossTest.test_invalid_time_grids_fail_clearly) ... ok
+test_linear_slope_mismatch_has_no_curvature (test_temporal_losses.TemporalLossTest.test_linear_slope_mismatch_has_no_curvature) ... ok
+test_nonuniform_times_drive_all_rate_modes (test_temporal_losses.TemporalLossTest.test_nonuniform_times_drive_all_rate_modes) ... ok
+test_omitted_membership_samples_one_graph (test_temporal_losses.TemporalLossTest.test_omitted_membership_samples_one_graph) ... ok
+test_one_step_all_modes_return_differentiable_zero (test_temporal_losses.TemporalLossTest.test_one_step_all_modes_return_differentiable_zero) ... ok
+test_optional_rmse_applies_only_to_temporal_penalty (test_temporal_losses.TemporalLossTest.test_optional_rmse_applies_only_to_temporal_penalty) ... ok
+test_pair_lag_filtering_and_no_rate_normalization (test_temporal_losses.TemporalLossTest.test_pair_lag_filtering_and_no_rate_normalization) ... ok
+test_pair_sampling_respects_torch_seed (test_temporal_losses.TemporalLossTest.test_pair_sampling_respects_torch_seed) ... ok
+test_pair_sampling_without_replacement_caps_at_candidates (test_temporal_losses.TemporalLossTest.test_pair_sampling_without_replacement_caps_at_candidates) ... ok
+test_pairs_are_shared_within_graph_and_independent_across_graphs (test_temporal_losses.TemporalLossTest.test_pairs_are_shared_within_graph_and_independent_across_graphs) ... ok
+test_perfect_prediction_all_modes (test_temporal_losses.TemporalLossTest.test_perfect_prediction_all_modes) ... ok
+test_private_pair_generator_is_reproducible_and_isolates_global_rng (test_temporal_losses.TemporalLossTest.test_private_pair_generator_is_reproducible_and_isolates_global_rng) ... ok
+test_quadratic_curvature_matches_target_curvature (test_temporal_losses.TemporalLossTest.test_quadratic_curvature_matches_target_curvature) ... ok
+test_rate_equal_and_explicit_weights_average_per_scale (test_temporal_losses.TemporalLossTest.test_rate_equal_and_explicit_weights_average_per_scale) ... ok
+test_rate_weight_denominator_excludes_unavailable_lags (test_temporal_losses.TemporalLossTest.test_rate_weight_denominator_excludes_unavailable_lags) ... ok
+test_rmse_epsilon_must_be_positive_for_direct_calls (test_temporal_losses.TemporalLossTest.test_rmse_epsilon_must_be_positive_for_direct_calls) ... ok
+test_rmse_perfect_match_has_zero_loss_and_finite_zero_gradient (test_temporal_losses.TemporalLossTest.test_rmse_perfect_match_has_zero_loss_and_finite_zero_gradient) ... ok
+test_shared_time_grid_supported_shapes (test_temporal_losses.TemporalLossTest.test_shared_time_grid_supported_shapes) ... ok
+test_two_steps_keep_valid_terms_and_skip_curvature (test_temporal_losses.TemporalLossTest.test_two_steps_keep_valid_terms_and_skip_curvature) ... ok
+test_unavailable_or_disabled_pairs_do_not_advance_private_generator (test_temporal_losses.TemporalLossTest.test_unavailable_or_disabled_pairs_do_not_advance_private_generator) ... ok
+test_unavailable_pairs_and_lags_return_differentiable_zero (test_temporal_losses.TemporalLossTest.test_unavailable_pairs_and_lags_return_differentiable_zero) ... ok
+test_rollout_only_construction_still_validates_temporal_dimensions (test_training_series.RolloutDatasetConstructionTest.test_rollout_only_construction_still_validates_temporal_dimensions) ... ok
+test_rollout_splits_skip_anchor_expansion_and_preserve_trajectory_access (test_training_series.RolloutDatasetConstructionTest.test_rollout_splits_skip_anchor_expansion_and_preserve_trajectory_access) ... ok
+test_repeated_anchor_keeps_independent_horizon_and_complete_future_predictions (test_training_series.TrainingSeriesHorizonRegressionTest.test_repeated_anchor_keeps_independent_horizon_and_complete_future_predictions) ... ok
+test_anuga_includes_all_unique_anchors_before_replacement_extras (test_training_series.TrainingSeriesSamplingTest.test_anuga_includes_all_unique_anchors_before_replacement_extras) ... ok
+test_each_scenario_keeps_its_own_budget_and_valid_anchors (test_training_series.TrainingSeriesSamplingTest.test_each_scenario_keeps_its_own_budget_and_valid_anchors) ... ok
+test_empty_scenario_and_invalid_budgets_fail_instead_of_changing_weighting (test_training_series.TrainingSeriesSamplingTest.test_empty_scenario_and_invalid_budgets_fail_instead_of_changing_weighting) ... ok
+test_epoch_seed_is_deterministic_and_can_change_anchor_subset (test_training_series.TrainingSeriesSamplingTest.test_epoch_seed_is_deterministic_and_can_change_anchor_subset) ... ok
+test_formal_protocol_budgets (test_training_series.TrainingSeriesSamplingTest.test_formal_protocol_budgets) ... ok
+test_formal_sweeps_keep_dataset_lengths_and_four_rank_shards_constant (test_training_series.TrainingSeriesSamplingTest.test_formal_sweeps_keep_dataset_lengths_and_four_rank_shards_constant) ... ok
+test_issm_short_k_selects_exactly_60_distinct_natural_anchors (test_training_series.TrainingSeriesSamplingTest.test_issm_short_k_selects_exactly_60_distinct_natural_anchors) ... ok
+
+----------------------------------------------------------------------
+Ran 133 tests in 26.599s
+
+OK

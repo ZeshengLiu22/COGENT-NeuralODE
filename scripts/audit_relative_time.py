@@ -16,6 +16,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from datasets.factory import build_dataset, build_splits
 from datasets.normalization import FeatureNormalizer
 from models import build_model
+from training.trainer import _truncate_future_horizon
 from utils.io import load_config_bundle, save_json
 
 
@@ -28,7 +29,7 @@ def audit_dataset(name: str, data_root: Path, seed: int) -> dict:
     ])
     subdirectory = "ISSM/PIG_5000" if name == "issm" else "ANUGA/simulation_data_merged"
     config["dataset"].update({
-        "data_dir": str(data_root / subdirectory), "cache_in_memory": True, "future_len": 8,
+        "data_dir": str(data_root / subdirectory), "cache_in_memory": True,
     })
     # Only this numerical audit uses small widths; formal configs are unchanged.
     config["model"].update({"latent_dim": 16, "decoder_hidden_dims": [16]})
@@ -40,15 +41,16 @@ def audit_dataset(name: str, data_root: Path, seed: int) -> dict:
     train, _, _ = build_splits(config)
     if not train:
         raise ValueError(f"No training trajectories found for {name}")
-    dataset = build_dataset(name, train[:1], "train", config)
+    dataset = build_dataset(name, train[:1], "train", config, build_training_series=False)
     trajectory = next(iter(dataset.iter_trajectories()))
     normalizer = FeatureNormalizer.fit_from_trajectories([trajectory])
     dataset.normalizer = normalizer
-    sample = dataset[0]
-    shorter = sample.clone()
-    for key in ("force_future", "t_future", "y_future", "future_idx", "future_time"):
-        if key in shorter:
-            setattr(shorter, key, getattr(shorter, key)[:, :4])
+    assert not dataset.all_windows and not dataset.active_windows
+    full_rollout = dataset.get_rollout_data(0, start_t=int(config["evaluation"]["known_steps"]) - 1)
+    expected_steps = int(trajectory.state.shape[0]) - int(config["evaluation"]["known_steps"])
+    assert full_rollout.y_future.shape[1] == expected_steps
+    sample = _truncate_future_horizon(full_rollout.clone(), 8)
+    shorter = _truncate_future_horizon(full_rollout.clone(), 4)
     torch.manual_seed(seed)
     model = build_model(
         config, sample.x_static.shape[-1], sample.force_hist.shape[-1], sample.state_hist.shape[-1],
@@ -72,6 +74,9 @@ def audit_dataset(name: str, data_root: Path, seed: int) -> dict:
         "nodes": int(sample.x_static.shape[0]),
         "history_len": int(sample.state_hist.shape[1]),
         "requested_future_lengths": [4, 8],
+        "rollout_to_end_steps": expected_steps,
+        "training_future_len": config["dataset"]["future_len"],
+        "training_anchors_constructed": len(dataset.all_windows),
         "relative_time_scale": model.dynamics.relative_time_scale,
         "static_channels": int(sample.x_static.shape[-1]),
         "forcing_channels": int(sample.force_hist.shape[-1]),

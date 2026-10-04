@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Read-only CPU audit of inputs, rollout semantics, and training-window counts.
+"""Read-only CPU audit of inputs, rollout semantics, and natural anchors and fixed training-series exposure.
 
 Example:
     python scripts/audit_foundation.py --data-root /path/to/data \
@@ -30,19 +30,26 @@ from datasets.factory import build_splits
 from datasets.issm_dataset import ISSMDataset, _load_container
 from datasets.normalization import FeatureNormalizer, _RunningStats
 from datasets.split_utils import parse_issm_rate_from_filename
-from datasets.window_utils import enumerate_window_end_indices
+from datasets.window_utils import WindowMetadata, enumerate_window_end_indices, sample_training_series_for_epoch
 from utils import load_config_bundle
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
 def _config_stack(name: str, overlays: tuple[str, ...] = ()) -> list[str]:
+    selected = {Path(path).parent.name: path for path in overlays}
+    prefix = f"configs/ablations/{name}"
+    future, known = (180, 60) if name == "issm" else (64, 8)
     return [
         "configs/default.yaml",
         f"configs/datasets/{name}.yaml",
         f"configs/protocols/{name}/main.yaml",
         "configs/models/node2.yaml",
-        *overlays,
+        selected.get("history", f"{prefix}/history/h1.yaml"),
+        selected.get("architecture", f"{prefix}/architecture/full.yaml"),
+        selected.get("training_horizon", f"{prefix}/training_horizon/k{future}.yaml"),
+        selected.get("rollout_start", f"{prefix}/rollout_start/known{known}.yaml"),
+        selected.get("temporal_consistency", f"{prefix}/temporal_consistency/tc0.yaml"),
         "configs/runtime/fast.yaml",
     ]
 
@@ -89,11 +96,12 @@ def validate_temporal_settings(config: dict, lengths: dict[str, int]) -> dict:
 
 
 def validate_main_protocol(config: dict, name: str) -> None:
-    expected = {"issm": (1, 180, 60, 180.0), "anuga": (1, 64, 8, 65.0)}[name]
+    expected = {"issm": (1, 180, 60, 180.0, 60), "anuga": (1, 64, 8, 65.0, 9)}[name]
     actual = (config["dataset"]["history_len"], config["dataset"]["future_len"],
-              config["evaluation"]["known_steps"], config["model"]["relative_time_scale"])
+              config["evaluation"]["known_steps"], config["model"]["relative_time_scale"],
+              config["dataset"]["train_series_per_scenario_per_epoch"])
     if actual != expected:
-        raise ValueError(f"{name} main protocol must resolve to H/K/known/scale={expected}, got {actual}.")
+        raise ValueError(f"{name} main protocol must resolve to H/K/known/scale/budget={expected}, got {actual}.")
     if config["dataset"]["name"] != name:
         raise ValueError(f"Expected dataset identity {name}.")
     if name == "issm" and Path(config["dataset"]["data_dir"]).name != "PIG_5000":
@@ -233,42 +241,62 @@ def _audit_anuga(config: dict) -> tuple[dict, dict[str, int]]:
 
 def _scan_table(name: str, axis: str, data_dir: Path, lengths: dict[str, int]) -> dict:
     rows = []
-    for path in sorted((PROJECT_ROOT / "configs/ablations" / axis).glob("*.yaml")):
+    for path in sorted((PROJECT_ROOT / "configs/ablations" / name / axis).glob("*.yaml")):
         overlays = (str(path.relative_to(PROJECT_ROOT)),)
         config = _config(name, data_dir, overlays)
         dataset_cfg = config["dataset"]
-        if name == "issm" and axis == "future_len" and dataset_cfg["future_len"] not in (30, 45, 60, 75, 90, 120, 150, 180):
-            continue
         semantics = validate_temporal_settings(config, lengths)
         train_files = _splits(config)["train"]
+        budget = int(dataset_cfg["train_series_per_scenario_per_epoch"])
         per_scenario = {}
-        for scenario_path in train_files:
-            per_scenario[scenario_path.name] = enumerate_window_end_indices(
+        natural_series = []
+        for scenario_index, scenario_path in enumerate(train_files):
+            anchors = enumerate_window_end_indices(
                 lengths[scenario_path.name], dataset_cfg["history_len"], dataset_cfg["future_len"],
                 dataset_cfg.get("stride", 1),
             )
-        window_counts = sorted({len(anchors) for anchors in per_scenario.values()})
-        first_anchors = sorted({anchors[0] for anchors in per_scenario.values() if anchors})
-        last_anchors = sorted({anchors[-1] for anchors in per_scenario.values() if anchors})
-        total_windows = sum(len(anchors) for anchors in per_scenario.values())
+            if not anchors:
+                raise ValueError(f"No natural training anchors for {scenario_path.name}: {path}")
+            per_scenario[scenario_path.name] = anchors
+            natural_series.extend(WindowMetadata(scenario_index, anchor) for anchor in anchors)
+        selected = sample_training_series_for_epoch(
+            natural_series, len(train_files), np.random.default_rng(config["seed"]), budget,
+        )
+        selected_counts = Counter(series.scenario_index for series in selected)
+        assert set(selected_counts.values()) == {budget}
+        total_series = len(selected)
+        assert total_series == len(train_files) * budget
+        assert total_series % 4 == 0
+        natural_counts = sorted({len(anchors) for anchors in per_scenario.values()})
+        first_anchors = sorted({anchors[0] for anchors in per_scenario.values()})
+        last_anchors = sorted({anchors[-1] for anchors in per_scenario.values()})
         batch_size = int(config["training"]["batch_size"])
         accumulation = int(config["training"].get("grad_accum_steps", 1))
-        steps = lambda world_size: math.ceil(math.ceil(math.ceil(total_windows / world_size) / batch_size) / accumulation)
+        steps = lambda world_size: math.ceil(math.ceil(math.ceil(total_series / world_size) / batch_size) / accumulation)
         rows.append({"config": str(path.relative_to(PROJECT_ROOT)), "history_len": dataset_cfg["history_len"],
                      "future_len": dataset_cfg["future_len"], "known_steps": semantics["known_steps"],
-                     "rollout_lengths": semantics["rollout_lengths"], "windows_per_scenario": window_counts,
+                     "rollout_lengths": semantics["rollout_lengths"], "natural_anchor_counts": natural_counts,
                      "first_t_end": first_anchors, "last_t_end": last_anchors,
-                     "training_scenarios": len(train_files), "total_training_windows": total_windows,
+                     "training_scenarios": len(train_files), "total_natural_anchors": len(natural_series),
+                     "train_series_per_scenario_per_epoch": budget,
+                     "total_training_series_per_epoch": total_series,
+                     "four_gpu_sampler_padding": 0,
                      "per_rank_batch_size": batch_size, "grad_accum_steps": accumulation,
                      "optimizer_steps_per_epoch_single_process": steps(1),
                      "optimizer_steps_per_epoch_world_sizes": {str(world): steps(world) for world in [1, 2, 4, 8]}})
+    if not rows:
+        raise ValueError(f"No configs found for {name}/{axis}")
     rows.sort(key=lambda row: (row["history_len"], row["future_len"]))
+    assert len({row["total_training_series_per_epoch"] for row in rows}) == 1
     return {"training_anchor_rule": "range(history_len - 1, trajectory_length - future_len, stride)",
-            "config_stack_template": _config_stack(name, (f"configs/ablations/{axis}/<variant>.yaml",)),
+            "sampling_rule": "N >= B: B distinct anchors; N < B: all N once plus B-N replacement draws, shuffled per scenario",
+            "config_stack_template": _config_stack(name, (f"configs/ablations/{name}/{axis}/<variant>.yaml",)),
+            "history_note": "K tables use H1 for this structural audit; formal Phase 3 requires the selected Phase-1 H*.",
             "data_dir": str(data_dir),
             "sbatch_default_world_size": 4,
-            "optimizer_steps_formula": "ceil(ceil(ceil(total_training_windows / world_size) / per_rank_batch_size) / grad_accum_steps)",
-            "training_sampler_note": "Distributed training retains PyTorch padding; evaluation never pads.", "variants": rows}
+            "optimizer_steps_formula": "ceil(ceil(ceil(total_training_series_per_epoch / world_size) / per_rank_batch_size) / grad_accum_steps)",
+            "training_sampler_note": "Formal totals divide by four without padding; other world sizes use PyTorch DistributedSampler semantics.",
+            "variants": rows}
 
 
 def main() -> None:
@@ -292,7 +320,8 @@ def main() -> None:
         "scans": {
             "anuga_history": _scan_table("anuga", "history", anuga_dir, anuga_lengths),
             "issm_history": _scan_table("issm", "history", issm_dir, issm_lengths),
-            "issm_future": _scan_table("issm", "future_len", issm_dir, issm_lengths),
+            "issm_training_horizon": _scan_table("issm", "training_horizon", issm_dir, issm_lengths),
+            "anuga_training_horizon": _scan_table("anuga", "training_horizon", anuga_dir, anuga_lengths),
         },
         "relative_time_prefix": "Separate model regression/audit; this script does not run model inference.",
     }

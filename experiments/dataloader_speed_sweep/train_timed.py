@@ -171,14 +171,14 @@ def main() -> None:
             make_split_manifest({"train": train_files, "val": val_files, "test": test_files}, config["dataset"]["data_dir"]),
         )
 
-    train_dataset = build_dataset(dataset_name, train_files, split="train", config=config, normalizer=None, sample_windows=True)
+    train_dataset = build_dataset(dataset_name, train_files, split="train", config=config, normalizer=None)
     normalizer = FeatureNormalizer.fit_from_trajectories(
         train_dataset.iter_trajectories(),
         std_floor=float(config["normalization"]["std_floor"]),
     )
     train_dataset.normalizer = normalizer
-    val_dataset = build_dataset(dataset_name, val_files, split="val", config=config, normalizer=normalizer, sample_windows=False)
-    test_dataset = build_dataset(dataset_name, test_files, split="test", config=config, normalizer=normalizer, sample_windows=False)
+    val_dataset = build_dataset(dataset_name, val_files, split="val", config=config, normalizer=normalizer)
+    test_dataset = build_dataset(dataset_name, test_files, split="test", config=config, normalizer=normalizer)
 
     dataset_cfg = config["dataset"]
     num_workers = int(dataset_cfg.get("num_workers", 0))

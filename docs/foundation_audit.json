@@ -1,6 +1,6 @@
 {
-  "generated_utc": "2026-10-04T12:32:41.575262+00:00",
-  "command": "python scripts/audit_foundation.py --data-root data --output /tmp/cogent-foundation-refactor.json",
+  "generated_utc": "2026-10-04T18:31:17.387873+00:00",
+  "command": "python scripts/audit_foundation.py --data-root data --output /tmp/cogent_foundation_audit.json",
   "scope": "Read-only real-data audit; CPU; no optimization/training or accuracy claim",
   "formal_config_sources": {
     "issm": [
@@ -8,6 +8,11 @@
       "configs/datasets/issm.yaml",
       "configs/protocols/issm/main.yaml",
       "configs/models/node2.yaml",
+      "configs/ablations/issm/history/h1.yaml",
+      "configs/ablations/issm/architecture/full.yaml",
+      "configs/ablations/issm/training_horizon/k180.yaml",
+      "configs/ablations/issm/rollout_start/known60.yaml",
+      "configs/ablations/issm/temporal_consistency/tc0.yaml",
       "configs/runtime/fast.yaml"
     ],
     "anuga": [
@@ -15,6 +20,11 @@
       "configs/datasets/anuga.yaml",
       "configs/protocols/anuga/main.yaml",
       "configs/models/node2.yaml",
+      "configs/ablations/anuga/history/h1.yaml",
+      "configs/ablations/anuga/architecture/full.yaml",
+      "configs/ablations/anuga/training_horizon/k64.yaml",
+      "configs/ablations/anuga/rollout_start/known8.yaml",
+      "configs/ablations/anuga/temporal_consistency/tc0.yaml",
       "configs/runtime/fast.yaml"
     ]
   },
@@ -738,28 +748,34 @@
   "scans": {
     "anuga_history": {
       "training_anchor_rule": "range(history_len - 1, trajectory_length - future_len, stride)",
+      "sampling_rule": "N >= B: B distinct anchors; N < B: all N once plus B-N replacement draws, shuffled per scenario",
       "config_stack_template": [
         "configs/default.yaml",
         "configs/datasets/anuga.yaml",
         "configs/protocols/anuga/main.yaml",
         "configs/models/node2.yaml",
-        "configs/ablations/history/<variant>.yaml",
+        "configs/ablations/anuga/history/<variant>.yaml",
+        "configs/ablations/anuga/architecture/full.yaml",
+        "configs/ablations/anuga/training_horizon/k64.yaml",
+        "configs/ablations/anuga/rollout_start/known8.yaml",
+        "configs/ablations/anuga/temporal_consistency/tc0.yaml",
         "configs/runtime/fast.yaml"
       ],
+      "history_note": "K tables use H1 for this structural audit; formal Phase 3 requires the selected Phase-1 H*.",
       "data_dir": "data/ANUGA/simulation_data_merged",
       "sbatch_default_world_size": 4,
-      "optimizer_steps_formula": "ceil(ceil(ceil(total_training_windows / world_size) / per_rank_batch_size) / grad_accum_steps)",
-      "training_sampler_note": "Distributed training retains PyTorch padding; evaluation never pads.",
+      "optimizer_steps_formula": "ceil(ceil(ceil(total_training_series_per_epoch / world_size) / per_rank_batch_size) / grad_accum_steps)",
+      "training_sampler_note": "Formal totals divide by four without padding; other world sizes use PyTorch DistributedSampler semantics.",
       "variants": [
         {
-          "config": "configs/ablations/history/h1.yaml",
+          "config": "configs/ablations/anuga/history/h1.yaml",
           "history_len": 1,
           "future_len": 64,
           "known_steps": 8,
           "rollout_lengths": [
             65
           ],
-          "windows_per_scenario": [
+          "natural_anchor_counts": [
             9
           ],
           "first_t_end": [
@@ -769,7 +785,10 @@
             8
           ],
           "training_scenarios": 12,
-          "total_training_windows": 108,
+          "total_natural_anchors": 108,
+          "train_series_per_scenario_per_epoch": 9,
+          "total_training_series_per_epoch": 108,
+          "four_gpu_sampler_padding": 0,
           "per_rank_batch_size": 1,
           "grad_accum_steps": 1,
           "optimizer_steps_per_epoch_single_process": 108,
@@ -781,14 +800,14 @@
           }
         },
         {
-          "config": "configs/ablations/history/h2.yaml",
+          "config": "configs/ablations/anuga/history/h2.yaml",
           "history_len": 2,
           "future_len": 64,
           "known_steps": 8,
           "rollout_lengths": [
             65
           ],
-          "windows_per_scenario": [
+          "natural_anchor_counts": [
             8
           ],
           "first_t_end": [
@@ -798,26 +817,29 @@
             8
           ],
           "training_scenarios": 12,
-          "total_training_windows": 96,
+          "total_natural_anchors": 96,
+          "train_series_per_scenario_per_epoch": 9,
+          "total_training_series_per_epoch": 108,
+          "four_gpu_sampler_padding": 0,
           "per_rank_batch_size": 1,
           "grad_accum_steps": 1,
-          "optimizer_steps_per_epoch_single_process": 96,
+          "optimizer_steps_per_epoch_single_process": 108,
           "optimizer_steps_per_epoch_world_sizes": {
-            "1": 96,
-            "2": 48,
-            "4": 24,
-            "8": 12
+            "1": 108,
+            "2": 54,
+            "4": 27,
+            "8": 14
           }
         },
         {
-          "config": "configs/ablations/history/h3.yaml",
+          "config": "configs/ablations/anuga/history/h3.yaml",
           "history_len": 3,
           "future_len": 64,
           "known_steps": 8,
           "rollout_lengths": [
             65
           ],
-          "windows_per_scenario": [
+          "natural_anchor_counts": [
             7
           ],
           "first_t_end": [
@@ -827,26 +849,29 @@
             8
           ],
           "training_scenarios": 12,
-          "total_training_windows": 84,
+          "total_natural_anchors": 84,
+          "train_series_per_scenario_per_epoch": 9,
+          "total_training_series_per_epoch": 108,
+          "four_gpu_sampler_padding": 0,
           "per_rank_batch_size": 1,
           "grad_accum_steps": 1,
-          "optimizer_steps_per_epoch_single_process": 84,
+          "optimizer_steps_per_epoch_single_process": 108,
           "optimizer_steps_per_epoch_world_sizes": {
-            "1": 84,
-            "2": 42,
-            "4": 21,
-            "8": 11
+            "1": 108,
+            "2": 54,
+            "4": 27,
+            "8": 14
           }
         },
         {
-          "config": "configs/ablations/history/h4.yaml",
+          "config": "configs/ablations/anuga/history/h4.yaml",
           "history_len": 4,
           "future_len": 64,
           "known_steps": 8,
           "rollout_lengths": [
             65
           ],
-          "windows_per_scenario": [
+          "natural_anchor_counts": [
             6
           ],
           "first_t_end": [
@@ -856,26 +881,29 @@
             8
           ],
           "training_scenarios": 12,
-          "total_training_windows": 72,
+          "total_natural_anchors": 72,
+          "train_series_per_scenario_per_epoch": 9,
+          "total_training_series_per_epoch": 108,
+          "four_gpu_sampler_padding": 0,
           "per_rank_batch_size": 1,
           "grad_accum_steps": 1,
-          "optimizer_steps_per_epoch_single_process": 72,
+          "optimizer_steps_per_epoch_single_process": 108,
           "optimizer_steps_per_epoch_world_sizes": {
-            "1": 72,
-            "2": 36,
-            "4": 18,
-            "8": 9
+            "1": 108,
+            "2": 54,
+            "4": 27,
+            "8": 14
           }
         },
         {
-          "config": "configs/ablations/history/h5.yaml",
+          "config": "configs/ablations/anuga/history/h5.yaml",
           "history_len": 5,
           "future_len": 64,
           "known_steps": 8,
           "rollout_lengths": [
             65
           ],
-          "windows_per_scenario": [
+          "natural_anchor_counts": [
             5
           ],
           "first_t_end": [
@@ -885,26 +913,29 @@
             8
           ],
           "training_scenarios": 12,
-          "total_training_windows": 60,
+          "total_natural_anchors": 60,
+          "train_series_per_scenario_per_epoch": 9,
+          "total_training_series_per_epoch": 108,
+          "four_gpu_sampler_padding": 0,
           "per_rank_batch_size": 1,
           "grad_accum_steps": 1,
-          "optimizer_steps_per_epoch_single_process": 60,
+          "optimizer_steps_per_epoch_single_process": 108,
           "optimizer_steps_per_epoch_world_sizes": {
-            "1": 60,
-            "2": 30,
-            "4": 15,
-            "8": 8
+            "1": 108,
+            "2": 54,
+            "4": 27,
+            "8": 14
           }
         },
         {
-          "config": "configs/ablations/history/h6.yaml",
+          "config": "configs/ablations/anuga/history/h6.yaml",
           "history_len": 6,
           "future_len": 64,
           "known_steps": 8,
           "rollout_lengths": [
             65
           ],
-          "windows_per_scenario": [
+          "natural_anchor_counts": [
             4
           ],
           "first_t_end": [
@@ -914,26 +945,29 @@
             8
           ],
           "training_scenarios": 12,
-          "total_training_windows": 48,
+          "total_natural_anchors": 48,
+          "train_series_per_scenario_per_epoch": 9,
+          "total_training_series_per_epoch": 108,
+          "four_gpu_sampler_padding": 0,
           "per_rank_batch_size": 1,
           "grad_accum_steps": 1,
-          "optimizer_steps_per_epoch_single_process": 48,
+          "optimizer_steps_per_epoch_single_process": 108,
           "optimizer_steps_per_epoch_world_sizes": {
-            "1": 48,
-            "2": 24,
-            "4": 12,
-            "8": 6
+            "1": 108,
+            "2": 54,
+            "4": 27,
+            "8": 14
           }
         },
         {
-          "config": "configs/ablations/history/h7.yaml",
+          "config": "configs/ablations/anuga/history/h7.yaml",
           "history_len": 7,
           "future_len": 64,
           "known_steps": 8,
           "rollout_lengths": [
             65
           ],
-          "windows_per_scenario": [
+          "natural_anchor_counts": [
             3
           ],
           "first_t_end": [
@@ -943,26 +977,29 @@
             8
           ],
           "training_scenarios": 12,
-          "total_training_windows": 36,
+          "total_natural_anchors": 36,
+          "train_series_per_scenario_per_epoch": 9,
+          "total_training_series_per_epoch": 108,
+          "four_gpu_sampler_padding": 0,
           "per_rank_batch_size": 1,
           "grad_accum_steps": 1,
-          "optimizer_steps_per_epoch_single_process": 36,
+          "optimizer_steps_per_epoch_single_process": 108,
           "optimizer_steps_per_epoch_world_sizes": {
-            "1": 36,
-            "2": 18,
-            "4": 9,
-            "8": 5
+            "1": 108,
+            "2": 54,
+            "4": 27,
+            "8": 14
           }
         },
         {
-          "config": "configs/ablations/history/h8.yaml",
+          "config": "configs/ablations/anuga/history/h8.yaml",
           "history_len": 8,
           "future_len": 64,
           "known_steps": 8,
           "rollout_lengths": [
             65
           ],
-          "windows_per_scenario": [
+          "natural_anchor_counts": [
             2
           ],
           "first_t_end": [
@@ -972,43 +1009,52 @@
             8
           ],
           "training_scenarios": 12,
-          "total_training_windows": 24,
+          "total_natural_anchors": 24,
+          "train_series_per_scenario_per_epoch": 9,
+          "total_training_series_per_epoch": 108,
+          "four_gpu_sampler_padding": 0,
           "per_rank_batch_size": 1,
           "grad_accum_steps": 1,
-          "optimizer_steps_per_epoch_single_process": 24,
+          "optimizer_steps_per_epoch_single_process": 108,
           "optimizer_steps_per_epoch_world_sizes": {
-            "1": 24,
-            "2": 12,
-            "4": 6,
-            "8": 3
+            "1": 108,
+            "2": 54,
+            "4": 27,
+            "8": 14
           }
         }
       ]
     },
     "issm_history": {
       "training_anchor_rule": "range(history_len - 1, trajectory_length - future_len, stride)",
+      "sampling_rule": "N >= B: B distinct anchors; N < B: all N once plus B-N replacement draws, shuffled per scenario",
       "config_stack_template": [
         "configs/default.yaml",
         "configs/datasets/issm.yaml",
         "configs/protocols/issm/main.yaml",
         "configs/models/node2.yaml",
-        "configs/ablations/history/<variant>.yaml",
+        "configs/ablations/issm/history/<variant>.yaml",
+        "configs/ablations/issm/architecture/full.yaml",
+        "configs/ablations/issm/training_horizon/k180.yaml",
+        "configs/ablations/issm/rollout_start/known60.yaml",
+        "configs/ablations/issm/temporal_consistency/tc0.yaml",
         "configs/runtime/fast.yaml"
       ],
+      "history_note": "K tables use H1 for this structural audit; formal Phase 3 requires the selected Phase-1 H*.",
       "data_dir": "data/ISSM/PIG_5000",
       "sbatch_default_world_size": 4,
-      "optimizer_steps_formula": "ceil(ceil(ceil(total_training_windows / world_size) / per_rank_batch_size) / grad_accum_steps)",
-      "training_sampler_note": "Distributed training retains PyTorch padding; evaluation never pads.",
+      "optimizer_steps_formula": "ceil(ceil(ceil(total_training_series_per_epoch / world_size) / per_rank_batch_size) / grad_accum_steps)",
+      "training_sampler_note": "Formal totals divide by four without padding; other world sizes use PyTorch DistributedSampler semantics.",
       "variants": [
         {
-          "config": "configs/ablations/history/h1.yaml",
+          "config": "configs/ablations/issm/history/h1.yaml",
           "history_len": 1,
           "future_len": 180,
           "known_steps": 60,
           "rollout_lengths": [
             180
           ],
-          "windows_per_scenario": [
+          "natural_anchor_counts": [
             60
           ],
           "first_t_end": [
@@ -1018,7 +1064,10 @@
             59
           ],
           "training_scenarios": 28,
-          "total_training_windows": 1680,
+          "total_natural_anchors": 1680,
+          "train_series_per_scenario_per_epoch": 60,
+          "total_training_series_per_epoch": 1680,
+          "four_gpu_sampler_padding": 0,
           "per_rank_batch_size": 8,
           "grad_accum_steps": 1,
           "optimizer_steps_per_epoch_single_process": 210,
@@ -1030,14 +1079,14 @@
           }
         },
         {
-          "config": "configs/ablations/history/h2.yaml",
+          "config": "configs/ablations/issm/history/h2.yaml",
           "history_len": 2,
           "future_len": 180,
           "known_steps": 60,
           "rollout_lengths": [
             180
           ],
-          "windows_per_scenario": [
+          "natural_anchor_counts": [
             59
           ],
           "first_t_end": [
@@ -1047,26 +1096,29 @@
             59
           ],
           "training_scenarios": 28,
-          "total_training_windows": 1652,
+          "total_natural_anchors": 1652,
+          "train_series_per_scenario_per_epoch": 60,
+          "total_training_series_per_epoch": 1680,
+          "four_gpu_sampler_padding": 0,
           "per_rank_batch_size": 8,
           "grad_accum_steps": 1,
-          "optimizer_steps_per_epoch_single_process": 207,
+          "optimizer_steps_per_epoch_single_process": 210,
           "optimizer_steps_per_epoch_world_sizes": {
-            "1": 207,
-            "2": 104,
-            "4": 52,
-            "8": 26
+            "1": 210,
+            "2": 105,
+            "4": 53,
+            "8": 27
           }
         },
         {
-          "config": "configs/ablations/history/h3.yaml",
+          "config": "configs/ablations/issm/history/h3.yaml",
           "history_len": 3,
           "future_len": 180,
           "known_steps": 60,
           "rollout_lengths": [
             180
           ],
-          "windows_per_scenario": [
+          "natural_anchor_counts": [
             58
           ],
           "first_t_end": [
@@ -1076,26 +1128,29 @@
             59
           ],
           "training_scenarios": 28,
-          "total_training_windows": 1624,
+          "total_natural_anchors": 1624,
+          "train_series_per_scenario_per_epoch": 60,
+          "total_training_series_per_epoch": 1680,
+          "four_gpu_sampler_padding": 0,
           "per_rank_batch_size": 8,
           "grad_accum_steps": 1,
-          "optimizer_steps_per_epoch_single_process": 203,
+          "optimizer_steps_per_epoch_single_process": 210,
           "optimizer_steps_per_epoch_world_sizes": {
-            "1": 203,
-            "2": 102,
-            "4": 51,
-            "8": 26
+            "1": 210,
+            "2": 105,
+            "4": 53,
+            "8": 27
           }
         },
         {
-          "config": "configs/ablations/history/h4.yaml",
+          "config": "configs/ablations/issm/history/h4.yaml",
           "history_len": 4,
           "future_len": 180,
           "known_steps": 60,
           "rollout_lengths": [
             180
           ],
-          "windows_per_scenario": [
+          "natural_anchor_counts": [
             57
           ],
           "first_t_end": [
@@ -1105,26 +1160,29 @@
             59
           ],
           "training_scenarios": 28,
-          "total_training_windows": 1596,
+          "total_natural_anchors": 1596,
+          "train_series_per_scenario_per_epoch": 60,
+          "total_training_series_per_epoch": 1680,
+          "four_gpu_sampler_padding": 0,
           "per_rank_batch_size": 8,
           "grad_accum_steps": 1,
-          "optimizer_steps_per_epoch_single_process": 200,
+          "optimizer_steps_per_epoch_single_process": 210,
           "optimizer_steps_per_epoch_world_sizes": {
-            "1": 200,
-            "2": 100,
-            "4": 50,
-            "8": 25
+            "1": 210,
+            "2": 105,
+            "4": 53,
+            "8": 27
           }
         },
         {
-          "config": "configs/ablations/history/h5.yaml",
+          "config": "configs/ablations/issm/history/h5.yaml",
           "history_len": 5,
           "future_len": 180,
           "known_steps": 60,
           "rollout_lengths": [
             180
           ],
-          "windows_per_scenario": [
+          "natural_anchor_counts": [
             56
           ],
           "first_t_end": [
@@ -1134,26 +1192,29 @@
             59
           ],
           "training_scenarios": 28,
-          "total_training_windows": 1568,
+          "total_natural_anchors": 1568,
+          "train_series_per_scenario_per_epoch": 60,
+          "total_training_series_per_epoch": 1680,
+          "four_gpu_sampler_padding": 0,
           "per_rank_batch_size": 8,
           "grad_accum_steps": 1,
-          "optimizer_steps_per_epoch_single_process": 196,
+          "optimizer_steps_per_epoch_single_process": 210,
           "optimizer_steps_per_epoch_world_sizes": {
-            "1": 196,
-            "2": 98,
-            "4": 49,
-            "8": 25
+            "1": 210,
+            "2": 105,
+            "4": 53,
+            "8": 27
           }
         },
         {
-          "config": "configs/ablations/history/h6.yaml",
+          "config": "configs/ablations/issm/history/h6.yaml",
           "history_len": 6,
           "future_len": 180,
           "known_steps": 60,
           "rollout_lengths": [
             180
           ],
-          "windows_per_scenario": [
+          "natural_anchor_counts": [
             55
           ],
           "first_t_end": [
@@ -1163,26 +1224,29 @@
             59
           ],
           "training_scenarios": 28,
-          "total_training_windows": 1540,
+          "total_natural_anchors": 1540,
+          "train_series_per_scenario_per_epoch": 60,
+          "total_training_series_per_epoch": 1680,
+          "four_gpu_sampler_padding": 0,
           "per_rank_batch_size": 8,
           "grad_accum_steps": 1,
-          "optimizer_steps_per_epoch_single_process": 193,
+          "optimizer_steps_per_epoch_single_process": 210,
           "optimizer_steps_per_epoch_world_sizes": {
-            "1": 193,
-            "2": 97,
-            "4": 49,
-            "8": 25
+            "1": 210,
+            "2": 105,
+            "4": 53,
+            "8": 27
           }
         },
         {
-          "config": "configs/ablations/history/h7.yaml",
+          "config": "configs/ablations/issm/history/h7.yaml",
           "history_len": 7,
           "future_len": 180,
           "known_steps": 60,
           "rollout_lengths": [
             180
           ],
-          "windows_per_scenario": [
+          "natural_anchor_counts": [
             54
           ],
           "first_t_end": [
@@ -1192,26 +1256,29 @@
             59
           ],
           "training_scenarios": 28,
-          "total_training_windows": 1512,
+          "total_natural_anchors": 1512,
+          "train_series_per_scenario_per_epoch": 60,
+          "total_training_series_per_epoch": 1680,
+          "four_gpu_sampler_padding": 0,
           "per_rank_batch_size": 8,
           "grad_accum_steps": 1,
-          "optimizer_steps_per_epoch_single_process": 189,
+          "optimizer_steps_per_epoch_single_process": 210,
           "optimizer_steps_per_epoch_world_sizes": {
-            "1": 189,
-            "2": 95,
-            "4": 48,
-            "8": 24
+            "1": 210,
+            "2": 105,
+            "4": 53,
+            "8": 27
           }
         },
         {
-          "config": "configs/ablations/history/h8.yaml",
+          "config": "configs/ablations/issm/history/h8.yaml",
           "history_len": 8,
           "future_len": 180,
           "known_steps": 60,
           "rollout_lengths": [
             180
           ],
-          "windows_per_scenario": [
+          "natural_anchor_counts": [
             53
           ],
           "first_t_end": [
@@ -1221,43 +1288,52 @@
             59
           ],
           "training_scenarios": 28,
-          "total_training_windows": 1484,
+          "total_natural_anchors": 1484,
+          "train_series_per_scenario_per_epoch": 60,
+          "total_training_series_per_epoch": 1680,
+          "four_gpu_sampler_padding": 0,
           "per_rank_batch_size": 8,
           "grad_accum_steps": 1,
-          "optimizer_steps_per_epoch_single_process": 186,
+          "optimizer_steps_per_epoch_single_process": 210,
           "optimizer_steps_per_epoch_world_sizes": {
-            "1": 186,
-            "2": 93,
-            "4": 47,
-            "8": 24
+            "1": 210,
+            "2": 105,
+            "4": 53,
+            "8": 27
           }
         }
       ]
     },
-    "issm_future": {
+    "issm_training_horizon": {
       "training_anchor_rule": "range(history_len - 1, trajectory_length - future_len, stride)",
+      "sampling_rule": "N >= B: B distinct anchors; N < B: all N once plus B-N replacement draws, shuffled per scenario",
       "config_stack_template": [
         "configs/default.yaml",
         "configs/datasets/issm.yaml",
         "configs/protocols/issm/main.yaml",
         "configs/models/node2.yaml",
-        "configs/ablations/future_len/<variant>.yaml",
+        "configs/ablations/issm/history/h1.yaml",
+        "configs/ablations/issm/architecture/full.yaml",
+        "configs/ablations/issm/training_horizon/<variant>.yaml",
+        "configs/ablations/issm/rollout_start/known60.yaml",
+        "configs/ablations/issm/temporal_consistency/tc0.yaml",
         "configs/runtime/fast.yaml"
       ],
+      "history_note": "K tables use H1 for this structural audit; formal Phase 3 requires the selected Phase-1 H*.",
       "data_dir": "data/ISSM/PIG_5000",
       "sbatch_default_world_size": 4,
-      "optimizer_steps_formula": "ceil(ceil(ceil(total_training_windows / world_size) / per_rank_batch_size) / grad_accum_steps)",
-      "training_sampler_note": "Distributed training retains PyTorch padding; evaluation never pads.",
+      "optimizer_steps_formula": "ceil(ceil(ceil(total_training_series_per_epoch / world_size) / per_rank_batch_size) / grad_accum_steps)",
+      "training_sampler_note": "Formal totals divide by four without padding; other world sizes use PyTorch DistributedSampler semantics.",
       "variants": [
         {
-          "config": "configs/ablations/future_len/k30.yaml",
+          "config": "configs/ablations/issm/training_horizon/k30.yaml",
           "history_len": 1,
           "future_len": 30,
           "known_steps": 60,
           "rollout_lengths": [
             180
           ],
-          "windows_per_scenario": [
+          "natural_anchor_counts": [
             210
           ],
           "first_t_end": [
@@ -1267,26 +1343,29 @@
             209
           ],
           "training_scenarios": 28,
-          "total_training_windows": 5880,
+          "total_natural_anchors": 5880,
+          "train_series_per_scenario_per_epoch": 60,
+          "total_training_series_per_epoch": 1680,
+          "four_gpu_sampler_padding": 0,
           "per_rank_batch_size": 8,
           "grad_accum_steps": 1,
-          "optimizer_steps_per_epoch_single_process": 735,
+          "optimizer_steps_per_epoch_single_process": 210,
           "optimizer_steps_per_epoch_world_sizes": {
-            "1": 735,
-            "2": 368,
-            "4": 184,
-            "8": 92
+            "1": 210,
+            "2": 105,
+            "4": 53,
+            "8": 27
           }
         },
         {
-          "config": "configs/ablations/future_len/k45.yaml",
+          "config": "configs/ablations/issm/training_horizon/k45.yaml",
           "history_len": 1,
           "future_len": 45,
           "known_steps": 60,
           "rollout_lengths": [
             180
           ],
-          "windows_per_scenario": [
+          "natural_anchor_counts": [
             195
           ],
           "first_t_end": [
@@ -1296,26 +1375,29 @@
             194
           ],
           "training_scenarios": 28,
-          "total_training_windows": 5460,
+          "total_natural_anchors": 5460,
+          "train_series_per_scenario_per_epoch": 60,
+          "total_training_series_per_epoch": 1680,
+          "four_gpu_sampler_padding": 0,
           "per_rank_batch_size": 8,
           "grad_accum_steps": 1,
-          "optimizer_steps_per_epoch_single_process": 683,
+          "optimizer_steps_per_epoch_single_process": 210,
           "optimizer_steps_per_epoch_world_sizes": {
-            "1": 683,
-            "2": 342,
-            "4": 171,
-            "8": 86
+            "1": 210,
+            "2": 105,
+            "4": 53,
+            "8": 27
           }
         },
         {
-          "config": "configs/ablations/future_len/k60.yaml",
+          "config": "configs/ablations/issm/training_horizon/k60.yaml",
           "history_len": 1,
           "future_len": 60,
           "known_steps": 60,
           "rollout_lengths": [
             180
           ],
-          "windows_per_scenario": [
+          "natural_anchor_counts": [
             180
           ],
           "first_t_end": [
@@ -1325,26 +1407,29 @@
             179
           ],
           "training_scenarios": 28,
-          "total_training_windows": 5040,
+          "total_natural_anchors": 5040,
+          "train_series_per_scenario_per_epoch": 60,
+          "total_training_series_per_epoch": 1680,
+          "four_gpu_sampler_padding": 0,
           "per_rank_batch_size": 8,
           "grad_accum_steps": 1,
-          "optimizer_steps_per_epoch_single_process": 630,
+          "optimizer_steps_per_epoch_single_process": 210,
           "optimizer_steps_per_epoch_world_sizes": {
-            "1": 630,
-            "2": 315,
-            "4": 158,
-            "8": 79
+            "1": 210,
+            "2": 105,
+            "4": 53,
+            "8": 27
           }
         },
         {
-          "config": "configs/ablations/future_len/k75.yaml",
+          "config": "configs/ablations/issm/training_horizon/k75.yaml",
           "history_len": 1,
           "future_len": 75,
           "known_steps": 60,
           "rollout_lengths": [
             180
           ],
-          "windows_per_scenario": [
+          "natural_anchor_counts": [
             165
           ],
           "first_t_end": [
@@ -1354,26 +1439,29 @@
             164
           ],
           "training_scenarios": 28,
-          "total_training_windows": 4620,
+          "total_natural_anchors": 4620,
+          "train_series_per_scenario_per_epoch": 60,
+          "total_training_series_per_epoch": 1680,
+          "four_gpu_sampler_padding": 0,
           "per_rank_batch_size": 8,
           "grad_accum_steps": 1,
-          "optimizer_steps_per_epoch_single_process": 578,
+          "optimizer_steps_per_epoch_single_process": 210,
           "optimizer_steps_per_epoch_world_sizes": {
-            "1": 578,
-            "2": 289,
-            "4": 145,
-            "8": 73
+            "1": 210,
+            "2": 105,
+            "4": 53,
+            "8": 27
           }
         },
         {
-          "config": "configs/ablations/future_len/k90.yaml",
+          "config": "configs/ablations/issm/training_horizon/k90.yaml",
           "history_len": 1,
           "future_len": 90,
           "known_steps": 60,
           "rollout_lengths": [
             180
           ],
-          "windows_per_scenario": [
+          "natural_anchor_counts": [
             150
           ],
           "first_t_end": [
@@ -1383,26 +1471,29 @@
             149
           ],
           "training_scenarios": 28,
-          "total_training_windows": 4200,
+          "total_natural_anchors": 4200,
+          "train_series_per_scenario_per_epoch": 60,
+          "total_training_series_per_epoch": 1680,
+          "four_gpu_sampler_padding": 0,
           "per_rank_batch_size": 8,
           "grad_accum_steps": 1,
-          "optimizer_steps_per_epoch_single_process": 525,
+          "optimizer_steps_per_epoch_single_process": 210,
           "optimizer_steps_per_epoch_world_sizes": {
-            "1": 525,
-            "2": 263,
-            "4": 132,
-            "8": 66
+            "1": 210,
+            "2": 105,
+            "4": 53,
+            "8": 27
           }
         },
         {
-          "config": "configs/ablations/future_len/k120.yaml",
+          "config": "configs/ablations/issm/training_horizon/k120.yaml",
           "history_len": 1,
           "future_len": 120,
           "known_steps": 60,
           "rollout_lengths": [
             180
           ],
-          "windows_per_scenario": [
+          "natural_anchor_counts": [
             120
           ],
           "first_t_end": [
@@ -1412,26 +1503,29 @@
             119
           ],
           "training_scenarios": 28,
-          "total_training_windows": 3360,
+          "total_natural_anchors": 3360,
+          "train_series_per_scenario_per_epoch": 60,
+          "total_training_series_per_epoch": 1680,
+          "four_gpu_sampler_padding": 0,
           "per_rank_batch_size": 8,
           "grad_accum_steps": 1,
-          "optimizer_steps_per_epoch_single_process": 420,
+          "optimizer_steps_per_epoch_single_process": 210,
           "optimizer_steps_per_epoch_world_sizes": {
-            "1": 420,
-            "2": 210,
-            "4": 105,
-            "8": 53
+            "1": 210,
+            "2": 105,
+            "4": 53,
+            "8": 27
           }
         },
         {
-          "config": "configs/ablations/future_len/k150.yaml",
+          "config": "configs/ablations/issm/training_horizon/k150.yaml",
           "history_len": 1,
           "future_len": 150,
           "known_steps": 60,
           "rollout_lengths": [
             180
           ],
-          "windows_per_scenario": [
+          "natural_anchor_counts": [
             90
           ],
           "first_t_end": [
@@ -1441,26 +1535,29 @@
             89
           ],
           "training_scenarios": 28,
-          "total_training_windows": 2520,
+          "total_natural_anchors": 2520,
+          "train_series_per_scenario_per_epoch": 60,
+          "total_training_series_per_epoch": 1680,
+          "four_gpu_sampler_padding": 0,
           "per_rank_batch_size": 8,
           "grad_accum_steps": 1,
-          "optimizer_steps_per_epoch_single_process": 315,
+          "optimizer_steps_per_epoch_single_process": 210,
           "optimizer_steps_per_epoch_world_sizes": {
-            "1": 315,
-            "2": 158,
-            "4": 79,
-            "8": 40
+            "1": 210,
+            "2": 105,
+            "4": 53,
+            "8": 27
           }
         },
         {
-          "config": "configs/ablations/future_len/k180.yaml",
+          "config": "configs/ablations/issm/training_horizon/k180.yaml",
           "history_len": 1,
           "future_len": 180,
           "known_steps": 60,
           "rollout_lengths": [
             180
           ],
-          "windows_per_scenario": [
+          "natural_anchor_counts": [
             60
           ],
           "first_t_end": [
@@ -1470,7 +1567,10 @@
             59
           ],
           "training_scenarios": 28,
-          "total_training_windows": 1680,
+          "total_natural_anchors": 1680,
+          "train_series_per_scenario_per_epoch": 60,
+          "total_training_series_per_epoch": 1680,
+          "four_gpu_sampler_padding": 0,
           "per_rank_batch_size": 8,
           "grad_accum_steps": 1,
           "optimizer_steps_per_epoch_single_process": 210,
@@ -1479,6 +1579,285 @@
             "2": 105,
             "4": 53,
             "8": 27
+          }
+        }
+      ]
+    },
+    "anuga_training_horizon": {
+      "training_anchor_rule": "range(history_len - 1, trajectory_length - future_len, stride)",
+      "sampling_rule": "N >= B: B distinct anchors; N < B: all N once plus B-N replacement draws, shuffled per scenario",
+      "config_stack_template": [
+        "configs/default.yaml",
+        "configs/datasets/anuga.yaml",
+        "configs/protocols/anuga/main.yaml",
+        "configs/models/node2.yaml",
+        "configs/ablations/anuga/history/h1.yaml",
+        "configs/ablations/anuga/architecture/full.yaml",
+        "configs/ablations/anuga/training_horizon/<variant>.yaml",
+        "configs/ablations/anuga/rollout_start/known8.yaml",
+        "configs/ablations/anuga/temporal_consistency/tc0.yaml",
+        "configs/runtime/fast.yaml"
+      ],
+      "history_note": "K tables use H1 for this structural audit; formal Phase 3 requires the selected Phase-1 H*.",
+      "data_dir": "data/ANUGA/simulation_data_merged",
+      "sbatch_default_world_size": 4,
+      "optimizer_steps_formula": "ceil(ceil(ceil(total_training_series_per_epoch / world_size) / per_rank_batch_size) / grad_accum_steps)",
+      "training_sampler_note": "Formal totals divide by four without padding; other world sizes use PyTorch DistributedSampler semantics.",
+      "variants": [
+        {
+          "config": "configs/ablations/anuga/training_horizon/k8.yaml",
+          "history_len": 1,
+          "future_len": 8,
+          "known_steps": 8,
+          "rollout_lengths": [
+            65
+          ],
+          "natural_anchor_counts": [
+            65
+          ],
+          "first_t_end": [
+            0
+          ],
+          "last_t_end": [
+            64
+          ],
+          "training_scenarios": 12,
+          "total_natural_anchors": 780,
+          "train_series_per_scenario_per_epoch": 9,
+          "total_training_series_per_epoch": 108,
+          "four_gpu_sampler_padding": 0,
+          "per_rank_batch_size": 1,
+          "grad_accum_steps": 1,
+          "optimizer_steps_per_epoch_single_process": 108,
+          "optimizer_steps_per_epoch_world_sizes": {
+            "1": 108,
+            "2": 54,
+            "4": 27,
+            "8": 14
+          }
+        },
+        {
+          "config": "configs/ablations/anuga/training_horizon/k16.yaml",
+          "history_len": 1,
+          "future_len": 16,
+          "known_steps": 8,
+          "rollout_lengths": [
+            65
+          ],
+          "natural_anchor_counts": [
+            57
+          ],
+          "first_t_end": [
+            0
+          ],
+          "last_t_end": [
+            56
+          ],
+          "training_scenarios": 12,
+          "total_natural_anchors": 684,
+          "train_series_per_scenario_per_epoch": 9,
+          "total_training_series_per_epoch": 108,
+          "four_gpu_sampler_padding": 0,
+          "per_rank_batch_size": 1,
+          "grad_accum_steps": 1,
+          "optimizer_steps_per_epoch_single_process": 108,
+          "optimizer_steps_per_epoch_world_sizes": {
+            "1": 108,
+            "2": 54,
+            "4": 27,
+            "8": 14
+          }
+        },
+        {
+          "config": "configs/ablations/anuga/training_horizon/k24.yaml",
+          "history_len": 1,
+          "future_len": 24,
+          "known_steps": 8,
+          "rollout_lengths": [
+            65
+          ],
+          "natural_anchor_counts": [
+            49
+          ],
+          "first_t_end": [
+            0
+          ],
+          "last_t_end": [
+            48
+          ],
+          "training_scenarios": 12,
+          "total_natural_anchors": 588,
+          "train_series_per_scenario_per_epoch": 9,
+          "total_training_series_per_epoch": 108,
+          "four_gpu_sampler_padding": 0,
+          "per_rank_batch_size": 1,
+          "grad_accum_steps": 1,
+          "optimizer_steps_per_epoch_single_process": 108,
+          "optimizer_steps_per_epoch_world_sizes": {
+            "1": 108,
+            "2": 54,
+            "4": 27,
+            "8": 14
+          }
+        },
+        {
+          "config": "configs/ablations/anuga/training_horizon/k32.yaml",
+          "history_len": 1,
+          "future_len": 32,
+          "known_steps": 8,
+          "rollout_lengths": [
+            65
+          ],
+          "natural_anchor_counts": [
+            41
+          ],
+          "first_t_end": [
+            0
+          ],
+          "last_t_end": [
+            40
+          ],
+          "training_scenarios": 12,
+          "total_natural_anchors": 492,
+          "train_series_per_scenario_per_epoch": 9,
+          "total_training_series_per_epoch": 108,
+          "four_gpu_sampler_padding": 0,
+          "per_rank_batch_size": 1,
+          "grad_accum_steps": 1,
+          "optimizer_steps_per_epoch_single_process": 108,
+          "optimizer_steps_per_epoch_world_sizes": {
+            "1": 108,
+            "2": 54,
+            "4": 27,
+            "8": 14
+          }
+        },
+        {
+          "config": "configs/ablations/anuga/training_horizon/k40.yaml",
+          "history_len": 1,
+          "future_len": 40,
+          "known_steps": 8,
+          "rollout_lengths": [
+            65
+          ],
+          "natural_anchor_counts": [
+            33
+          ],
+          "first_t_end": [
+            0
+          ],
+          "last_t_end": [
+            32
+          ],
+          "training_scenarios": 12,
+          "total_natural_anchors": 396,
+          "train_series_per_scenario_per_epoch": 9,
+          "total_training_series_per_epoch": 108,
+          "four_gpu_sampler_padding": 0,
+          "per_rank_batch_size": 1,
+          "grad_accum_steps": 1,
+          "optimizer_steps_per_epoch_single_process": 108,
+          "optimizer_steps_per_epoch_world_sizes": {
+            "1": 108,
+            "2": 54,
+            "4": 27,
+            "8": 14
+          }
+        },
+        {
+          "config": "configs/ablations/anuga/training_horizon/k48.yaml",
+          "history_len": 1,
+          "future_len": 48,
+          "known_steps": 8,
+          "rollout_lengths": [
+            65
+          ],
+          "natural_anchor_counts": [
+            25
+          ],
+          "first_t_end": [
+            0
+          ],
+          "last_t_end": [
+            24
+          ],
+          "training_scenarios": 12,
+          "total_natural_anchors": 300,
+          "train_series_per_scenario_per_epoch": 9,
+          "total_training_series_per_epoch": 108,
+          "four_gpu_sampler_padding": 0,
+          "per_rank_batch_size": 1,
+          "grad_accum_steps": 1,
+          "optimizer_steps_per_epoch_single_process": 108,
+          "optimizer_steps_per_epoch_world_sizes": {
+            "1": 108,
+            "2": 54,
+            "4": 27,
+            "8": 14
+          }
+        },
+        {
+          "config": "configs/ablations/anuga/training_horizon/k56.yaml",
+          "history_len": 1,
+          "future_len": 56,
+          "known_steps": 8,
+          "rollout_lengths": [
+            65
+          ],
+          "natural_anchor_counts": [
+            17
+          ],
+          "first_t_end": [
+            0
+          ],
+          "last_t_end": [
+            16
+          ],
+          "training_scenarios": 12,
+          "total_natural_anchors": 204,
+          "train_series_per_scenario_per_epoch": 9,
+          "total_training_series_per_epoch": 108,
+          "four_gpu_sampler_padding": 0,
+          "per_rank_batch_size": 1,
+          "grad_accum_steps": 1,
+          "optimizer_steps_per_epoch_single_process": 108,
+          "optimizer_steps_per_epoch_world_sizes": {
+            "1": 108,
+            "2": 54,
+            "4": 27,
+            "8": 14
+          }
+        },
+        {
+          "config": "configs/ablations/anuga/training_horizon/k64.yaml",
+          "history_len": 1,
+          "future_len": 64,
+          "known_steps": 8,
+          "rollout_lengths": [
+            65
+          ],
+          "natural_anchor_counts": [
+            9
+          ],
+          "first_t_end": [
+            0
+          ],
+          "last_t_end": [
+            8
+          ],
+          "training_scenarios": 12,
+          "total_natural_anchors": 108,
+          "train_series_per_scenario_per_epoch": 9,
+          "total_training_series_per_epoch": 108,
+          "four_gpu_sampler_padding": 0,
+          "per_rank_batch_size": 1,
+          "grad_accum_steps": 1,
+          "optimizer_steps_per_epoch_single_process": 108,
+          "optimizer_steps_per_epoch_world_sizes": {
+            "1": 108,
+            "2": 54,
+            "4": 27,
+            "8": 14
           }
         }
       ]

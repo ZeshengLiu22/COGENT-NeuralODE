@@ -1,0 +1,13 @@
+training:
+  temporal_consistency:
+    enabled: true
+    mode: rate_curvature
+    weight: 1.0
+    penalty: mse
+    rmse_eps: 1.0e-8
+    rate:
+      lags: [1, 3, 6, 12]
+      lag_weights: null
+    rate_curvature:
+      rate_weight: 1.0
+      curvature_weight: 1.0

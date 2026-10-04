@@ -1,4 +1,6 @@
 dataset:
+  # Canonical H1 exposure per simulation; anchors and k_eff remain variable.
+  train_series_per_scenario_per_epoch: 9
   history_len: 1
   future_len: 64
 model:

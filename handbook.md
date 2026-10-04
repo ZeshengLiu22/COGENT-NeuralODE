@@ -1,70 +1,162 @@
-# COGENT-NeuralODE handbook
+# COGENT-NeuralODE operating handbook
 
-This is the canonical guide for training and rollout evaluation. Detailed keys
-and formulas are in [config_setting.md](config_setting.md); temporal loss details
-are in [docs/temporal_consistency.md](docs/temporal_consistency.md).
+Use this guide for the formal ISSM and ANUGA experiments.
+The [master technical handbook](docs/continuous_graph_emulator_master_handbook.md)
+explains the full data/model pipeline; [config_setting.md](config_setting.md)
+defines configuration ownership and [docs/README.md](docs/README.md) indexes
+the active technical references.
 
-## Configuration
-
-```text
-configs/
-  default.yaml
-  datasets/{issm,anuga,adcirc}.yaml
-  protocols/{issm,anuga}/main.yaml
-  models/node2.yaml
-  ablations/
-    history/h{1..8}.yaml
-    future_len/k{30,45,60,64,75,90,120,150,180}.yaml
-    rollout_start/known{8,60,90,120}.yaml
-    architecture/encoder/{transformer,lstm}.yaml
-    architecture/{residual,ode_context,relative_time}/{on,off}.yaml
-    temporal_consistency/tc0_off.yaml ... tc5_hybrid.yaml
-  runtime/fast.yaml
-```
-
-Merge order is **default → dataset → protocol → model → ablations → runtime**.
-Later values win, dictionaries merge recursively, and lists replace wholesale.
-Each ablation changes one scientific choice. Explicit default controls remain
-available to make an experiment's config stack readable. Runtime settings
-control loading performance and never select data or alter scientific settings.
+## Scientific controls
 
 | Quantity | Meaning |
 | --- | --- |
-| `dataset.history_len` (H) | Number of true context states immediately before the prediction start |
-| `dataset.future_len` (K) | Maximum supervision available in each training window |
-| `evaluation.known_steps` (S) | Absolute index of the first predicted state; prediction continues to trajectory end |
+| H = `dataset.history_len` | True context states immediately before prediction |
+| K = `dataset.future_len` | Maximum stored training future block |
+| k_eff ≤ K | Independently sampled actual training prediction length |
+| S = `evaluation.known_steps` | Absolute index of first predicted state |
+| B = `dataset.train_series_per_scenario_per_epoch` | Selected training series per scenario per epoch |
 
-For trajectory length T, rollout history is `x[S-H:S]` and targets are `x[S:T]`.
-Require `H <= S < T`. H6/known60 uses states 54–59; H6/known90 uses 84–89.
-Training windows naturally vary with H and K. The sampled training horizon
-`k_eff <= K` never limits inference. A K30 model still predicts 180 steps from
-known60 on a 240-step ISSM trajectory.
+A training anchor t supplies `x[t-H+1:t+1]` and maximum future
+`x[t+1:t+K+1]`. The model predicts the complete first k_eff future states.
+Each scenario uses natural legal anchors; B anchors are sampled without
+replacement when enough exist. Otherwise every legal anchor appears once,
+with replacement only for extra draws needed to reach B, followed by shuffling.
 
-| Protocol | Dataset | H | K | S | Relative-time scale | Batch | Min training horizon | Loss scale |
-| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| ISSM | `data/ISSM/PIG_5000` | 1 | 180 | 60 | 180 | 8 | 24 | 100 |
-| ANUGA | `data/ANUGA/simulation_data_merged` | 1 | 64 | 8 | 65 | 1 | 8 | 1 |
+Formal evaluation uses history `x[S-H:S]` and predicts `x[S:T]`.
+Require H≤S<T. K does not cap inference: ISSM K30 still predicts 180 steps
+from known60 on T240. Checkpoint H/K remain authoritative at inference.
 
-Both use Transformer, residual decoding, history context in the ODE, relative
-time, and TC off. The ISSM rate-modulo split and ANUGA random split remain in
-the dataset YAMLs. The ANUGA path shown above is abbreviated; its dataset YAML
-preserves the existing absolute data location. ADCIRC has a dataset adapter/config; select its temporal and
-training settings explicitly because no ADCIRC scientific protocol is supplied.
+| Protocol | H control | Canonical K | S | B | Train scenarios | Series/epoch | Time scale | Batch/rank | Min k_eff | Loss scale |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| ISSM | 1 | 180 | 60 | 60 | 28 | 1,680 | 180 | 8 | 24 | 100 |
+| ANUGA | 1 | 64 | 8 | 9 | 12 | 108 | 65 | 1 | 8 | 1 |
 
-## Training
+B preserves the canonical H1 natural exposure: 240−1−180+1=60 and
+73−1−64+1=9. It does not fix k_eff or total supervised timestep count.
+The four-GPU dataset totals require no DDP padding.
 
-Install `requirements.txt` in the intended PyTorch environment, then run:
+Full architecture means Transformer, residual decoder ON, ODE history context
+ON, and relative time ON. Time scales stay fixed for all H/K/S variants.
+
+## Configuration and provenance
+
+Merge order is explicit:
+
+```text
+default -> dataset -> protocol -> model -> history -> architecture
+        -> training_horizon -> rollout_start -> temporal_consistency -> runtime
+```
+
+Dictionaries merge recursively; scalars and lists replace earlier values.
+Dataset selection/splits live in `configs/datasets/`, scientific baselines in
+`configs/protocols/{issm,anuga}/main.yaml`, and model/solver settings in
+`configs/models/node2.yaml`. Ablations are separate for each dataset:
+
+```text
+configs/ablations/issm/
+  history/h1.yaml ... h8.yaml
+  architecture/full.yaml
+  architecture/a01_transformer_reson_ctxon_timeon.yaml ... a16_lstm_resoff_ctxoff_timeoff.yaml
+  training_horizon/k30.yaml ... k180.yaml
+  rollout_start/known60.yaml, known90.yaml, known120.yaml
+  temporal_consistency/tc0.yaml ... tc5.yaml
+
+configs/ablations/anuga/
+  history/h1.yaml ... h8.yaml
+  architecture/full.yaml
+  architecture/a01_transformer_reson_ctxon_timeon.yaml ... a16_lstm_resoff_ctxoff_timeoff.yaml
+  training_horizon/k8.yaml ... k64.yaml
+  rollout_start/known8.yaml
+  temporal_consistency/tc0.yaml ... tc5.yaml
+```
+
+Formal files include all controls even when they match protocol defaults.
+Every launcher prints the complete stack including `protocol_config`.
+Every training run saves authoritative ordered `config_stack.txt` beside
+merged `config.json`. `runtime/fast.yaml` controls DataLoader performance and
+does not enable full in-memory caching; the shared default is false.
+
+## The four formal phases
+
+Only selected history H* propagates from Phase 1. Architecture and K winners
+do not determine subsequent phases.
+
+| Phase | H | Architecture | ISSM K / S | ANUGA K / S | TC |
+| --- | --- | --- | --- | --- | --- |
+| 01_history | 1…8 | Full | 180 / 60 | 64 / 8 | Off |
+| 02_architecture | Selected dataset H* | All 16 combinations | 180 / 60 | 64 / 8 | Off |
+| 03_training_horizon | Selected dataset H* | Full | K scan / 60 | K scan / 8 | Off |
+| 04_temporal_consistency | Selected dataset H* | Full | 180 / 60 | 64 / 8 | TC0…TC5 |
+
+ISSM K scan: 30,45,60,75,90,120,150,180.
+ANUGA K scan: 8,16,24,32,40,48,56,64.
+
+Select H* using rollout validation from the history phase. Each later-phase
+launcher contains `HISTORY_CONFIG="__SET_SELECTED_HISTORY_AFTER_PHASE1__"`
+and exits until edited to the selected dataset-specific history YAML. Update
+each file explicitly after selection; no hidden shared selection file supplies
+an assumed winner.
+
+## Standalone formal launchers
+
+Four trees contain one complete file for each experiment:
+
+```text
+launchers/shell/issm/{01_history,02_architecture,03_training_horizon,04_temporal_consistency}/
+launchers/shell/anuga/{01_history,02_architecture,03_training_horizon,04_temporal_consistency}/
+launchers/slurm/issm/{01_history,02_architecture,03_training_horizon,04_temporal_consistency}/
+launchers/slurm/anuga/{01_history,02_architecture,03_training_horizon,04_temporal_consistency}/
+```
+
+Each tree has 8 history +16 architecture +8 K +6 TC files. Each directly runs
+its complete `torchrun` training command with visible config, run name,
+process count, interpreter, repository path, and output/log locations. There
+are no experiment-enumerating loops, Slurm arrays, common workers, or
+dispatcher chains.
+
+From the repository, examples of independent runs are:
+
+```bash
+bash launchers/shell/issm/01_history/h1.sh
+bash launchers/shell/anuga/01_history/h1.sh
+
+mkdir -p logs
+sbatch launchers/slurm/issm/01_history/h1.sh
+sbatch launchers/slurm/anuga/01_history/h1.sh
+```
+
+Submit each desired experiment's file individually. The shell defaults use
+four processes and permit `PROJECT_ROOT`, `PYTHON_BIN`, and `NPROC` overrides.
+Formal Slurm files preserve the established H100 resources, four ranks,
+24 CPUs per task, nine-hour ISSM/six-hour ANUGA walltime, and cluster Python
+environment. ANUGA preserves its specified allocation; ISSM retains the
+existing default-allocation behavior. Inspect the complete file for site details.
+
+Slurm files set the known absolute repository root and `--chdir` explicitly.
+They do not infer paths from the submitted script's location or rely on sibling
+worker files. Slurm log directories must exist before submission; application
+logs and model outputs are under `logs/` and `outputs/<run_name>/`.
+
+`legacy-scripts/` contains archived infrastructure for provenance/reference
+only. Do not use those scripts for new formal experiments.
+
+## Ad-hoc entrypoints and direct Python
+
+Top-level `train_issm.sh` and `train_anuga.sh` are direct single-run entrypoints.
+Formal launchers do not depend on them. For example:
 
 ```bash
 bash train_issm.sh
+HISTORY_CONFIG=configs/ablations/issm/history/h4.yaml bash train_issm.sh
 bash train_anuga.sh
-EXTRA_CONFIGS="configs/ablations/history/h6.yaml" bash train_issm.sh
 ```
 
-`DATASET_CONFIG`, `PROTOCOL_CONFIG`, `MODEL_CONFIG`, `RUNTIME_CONFIG`, and
-`EXTRA_CONFIGS` select explicit stack elements. `EXTRA_CONFIGS` is a
-space-separated list. Launchers retain torchrun/process and environment controls;
-inspect the script for local machine settings. To invoke Python directly:
+They accept named environment overrides for dataset, protocol, model, history,
+architecture, training horizon, rollout start, TC, and runtime config. Trailing
+arguments are passed directly to `scripts/train.py`. Use these for deliberate
+ad-hoc runs, not as selection defaults for formal Phases 2–4.
+
+An explicit single-process canonical ISSM command is:
 
 ```bash
 python scripts/train.py \
@@ -72,82 +164,59 @@ python scripts/train.py \
   --config configs/datasets/issm.yaml \
   --config configs/protocols/issm/main.yaml \
   --config configs/models/node2.yaml \
-  --config configs/ablations/history/h1.yaml \
-  --config configs/runtime/fast.yaml --run-name issm_h1
+  --config configs/ablations/issm/history/h1.yaml \
+  --config configs/ablations/issm/architecture/full.yaml \
+  --config configs/ablations/issm/training_horizon/k180.yaml \
+  --config configs/ablations/issm/rollout_start/known60.yaml \
+  --config configs/ablations/issm/temporal_consistency/tc0.yaml \
+  --config configs/runtime/fast.yaml \
+  --run-name issm_h1_example
 ```
 
-Every run writes `outputs/<run_name>/config.json`, `config_stack.txt`,
-`split_files.json`, `history.json`, `best.pt`, and `final_metrics.json`.
-The stack file lists config paths in their exact merge order. The checkpoint
-contains the merged config, training normalizer, and exact split manifest.
-Validation and final testing roll out from S to trajectory end; checkpoint
-selection uses `whole_rollout_norm_rmse`. DDP shards scenarios without padding
-and globally reduces error sums and element counts.
+Run using the intended PyTorch environment with `requirements.txt` installed.
+ADCIRC has an adapter/config, but no supplied formal main protocol.
 
-## Experiment order
+## Training outputs and evaluation
 
-1. **History first:** H1–H8 with K180, known60, all four default architecture
-   choices, and TC0. Choose H* from rollout validation.
-2. **Architecture:** hold H* and K180 fixed, run all 16 combinations of encoder,
-   residual, ODE context, and relative time; keep known60 and TC0.
-3. **Future supervision:** hold H* and selected architecture fixed; sweep
-   K30/45/60/75/90/120/150/180. Every run still validates from known60 to the end.
-4. **Temporal consistency:** hold selected H/K/architecture fixed, compare TC0–5.
-5. **Rollout-start robustness:** evaluate the same final checkpoint from known60,
-   known90, known120. Keep selected H and relative-time scale fixed.
+Training saves `config.json`, `config_stack.txt`, `split_files.json`,
+`train.log`, `history.json`, `best.pt`, and `final_metrics.json`.
+Validation selects `whole_rollout_norm_rmse`. Test uses the best checkpoint.
+The checkpoint embeds config, normalizer, and exact split membership.
 
-Local sequential helpers and HPC submitters use the same explicit controls:
-
-```bash
-bash shell_scripts_sigspatial_issm/run_issm_history_scan_sequential.sh
-bash sbatch_scripts_sigspatial_issm/submit_issm_history_scan.sh
-bash sbatch_scripts_cercat_anuga/submit_anuga_history_scan.sh
-
-# Set these from completed selection results before the later phases.
-export HISTORY_LEN="$SELECTED_H"
-bash shell_scripts_sigspatial_issm/run_issm_architecture_scan_sequential.sh
-# HPC alternative: sbatch_scripts_sigspatial_issm/submit_issm_architecture_scan.sh
-
-export ENCODER="$SELECTED_ENCODER" RESIDUAL="$SELECTED_RESIDUAL"
-export ODE_CONTEXT="$SELECTED_ODE_CONTEXT" RELATIVE_TIME="$SELECTED_RELATIVE_TIME"
-bash shell_scripts_sigspatial_issm/run_issm_future_len_ablation_sequential.sh
-# HPC alternative: sbatch_scripts_sigspatial_issm/submit_issm_future_len_ablation.sh
-
-export FUTURE_LEN="$SELECTED_K"
-bash shell_scripts_sigspatial_issm/run_issm_temporal_consistency_scan_sequential.sh
-# HPC alternative: sbatch_scripts_sigspatial_issm/submit_issm_temporal_consistency_scan.sh
-```
-
-Encoder accepts `transformer` or `lstm`; switches accept `on` or `off`.
-Later-phase helpers require the selections; they do not assume a winning H.
-TC is a separate phase, never a Cartesian product with architecture.
-
-## Inference and saved results
-
-`scripts/evaluate.py` is the sole formal evaluation entrypoint:
+`scripts/evaluate.py` is the formal standalone evaluation entrypoint:
 
 ```bash
 python scripts/evaluate.py --checkpoint outputs/final/best.pt --split test \
-  --config configs/ablations/rollout_start/known60.yaml --output-dir outputs/rollouts
+  --config configs/ablations/issm/rollout_start/known60.yaml \
+  --output-dir outputs/rollouts
+```
+
+`--known-steps` can set the start directly. Runtime overrides may relocate
+`dataset.data_dir` or select evaluation AMP/device/output; checkpoint H, K,
+architecture, solver, normalization, training settings, and splits remain
+authoritative. Validation/test/evaluation datasets construct no training
+anchors and access scenarios through rollout data.
+
+For ISSM robustness, evaluate the same checkpoint from known60/90/120:
+
+```bash
 bash eval_rollout_start_sweep.sh --checkpoint outputs/final/best.pt \
   --output-dir outputs/rollouts
 ```
 
-`eval_rollout_tmux.sh` wraps the same entrypoint. `--known-steps` can set the
-start directly. Runtime overrides may relocate `dataset.data_dir` or select
-AMP/device/output; checkpoint H, K, architecture, solver, and training settings
-remain authoritative. There are no H/K inference overrides.
+This helper contains three explicit evaluation calls and does not train or
+reselect a model. Each start reanchors true history, producing 180/150/120
+future steps for T240. ANUGA retains known8. `eval_rollout_tmux.sh` can launch
+one evaluation in a detached tmux session.
 
-Each start requires a separate inference run with true history reanchored at S.
-For T240, known60/90/120 predict 180/150/120 steps. Files use the stem
-`best.<split>.known<S>.full_rollout`. The compressed predictions NPZ and metadata
-JSON preserve every future node/channel, physical and normalized predictions and
-targets, scenario/simulation IDs, history/start lengths, absolute indices,
-adapter-provided time values, and lead steps. Plots may be shortened with
-`--plot-max-lead-step`; complete predictions and whole-rollout metrics remain.
-ANUGA exports can additionally create complete time series and flood maps.
+Complete compressed NPZ predictions and companion metadata JSON use the stem
+`best.<split>.known<S>.full_rollout`. They retain every future node/channel,
+physical and normalized predictions/targets, scenario/simulation identities,
+H/S, lead steps, absolute indices, adapter time, and mesh/normalizer identity.
+`--plot-max-lead-step` limits plots only, leaving full arrays and metrics.
+ANUGA can additionally export time series and flood maps.
 
-## Post-processing without inference
+## Postprocessing without inference
 
 ```bash
 python scripts/postprocess_rollout.py \
@@ -158,25 +227,44 @@ python scripts/postprocess_rollout.py \
   --mode common-tail --output-prefix outputs/rollouts/common_tail
 ```
 
-Equal lead compares the first 120 forecast steps: absolute intervals 60–179,
-90–209, and 120–239. Common tail compares absolute 120–239 for all three runs,
-revealing accumulated rollout-age effects on the same target period.
-The postprocessor reads saved arrays, aligns scenarios/indices/times and mesh
-structure, and writes JSON/CSV; it never loads a checkpoint or runs a model.
-`--mode full`, `lead-slice`, and `absolute-slice` support further recomputation;
-use `--help` for slice bounds. Keep the predictions NPZ and companion metadata
-together as the authoritative inference output.
+Equal lead compares forecast age: absolute periods 60–179/90–209/120–239.
+Common tail compares the same target period 120–239 across starts. The
+postprocessor validates alignment and writes JSON/CSV without loading a model.
+Other modes include `full`, `lead-slice`, `absolute-slice`, and `time-slice`;
+`--help` documents inclusive/exclusive bounds. Keep each NPZ and its metadata
+together.
 
-## Validation
+## Validation and pre-sweep CUDA smoke
+
+The CPU/unit and real-data audit commands are:
 
 ```bash
 OMP_NUM_THREADS=1 python -m unittest discover -s tests -v
 GLOO_SOCKET_IFNAME=lo OMP_NUM_THREADS=1 python tests/check_temporal_ddp.py
 GLOO_SOCKET_IFNAME=lo OMP_NUM_THREADS=1 python tests/check_rollout_ddp.py
-python scripts/audit_foundation.py --help
-python scripts/audit_relative_time.py --help
+python -m compileall .
+python scripts/audit_foundation.py --data-root data --output docs/foundation_audit.json
+python scripts/audit_relative_time.py --data-root data --output docs/final_cleanup_validation/real_prefix.json
 ```
 
-The [migration report](docs/config_evaluation_refactor_20261004.md) records the
-cleanup and validation results. Older guidance and reports are retained only in
-explicit historical directories and do not define the current workflow.
+Syntax-check active shell/Slurm files and exclude historical directories
+`legacy-scripts/`, `old-files/`, and `legacy-v2/` from active stale-reference
+audits. [Current validation evidence](docs/final_cleanup_validation/results.json)
+records completed checks; older `docs/refactor_validation/` is a historical
+snapshot of the earlier refactor.
+
+Before the large sweeps, run the separate bounded CUDA smoke jobs from an
+authenticated cluster login:
+
+```bash
+mkdir -p logs
+sbatch tests/smoke_cuda_issm.sh
+sbatch tests/smoke_cuda_anuga.sh
+```
+
+These are validation jobs, not formal results. They exercise real canonical
+data/configuration, fixed B, four-rank training with sampled k_eff, rollout
+validation, best checkpoint, standalone evaluation, complete NPZ, and
+postprocessing. Their bounded optimizer run does not constitute a formal
+epoch or accuracy result. CUDA training is validated only when the actual jobs
+complete and their evidence is inspected; CPU success alone does not establish it.

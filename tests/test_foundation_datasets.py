@@ -251,12 +251,12 @@ class LoaderRepairTest(unittest.TestCase):
             build_loader(dataset, 2, 0, distributed=True, shuffle=False)
 
     def test_persistent_workers_disabled_only_for_training_resampling(self):
-        for sampling in [{"windows_per_scenario": 2}, {"epoch_num_windows": 2}]:
+        for sampling in [{"train_series_per_scenario_per_epoch": 2}]:
             dataset = _SyntheticDataset([Path("12")], 2, 3, "train", **sampling)
             with self.assertLogs("datasets.factory", level="WARNING") as messages:
                 loader = build_loader(dataset, 2, 1, False, True, persistent_workers=True)
             self.assertFalse(loader.persistent_workers)
-            self.assertIn("epoch window resampling", messages.output[0])
+            self.assertIn("epoch training-series resampling", messages.output[0])
         for split in ["train", "val"]:
             dataset = _SyntheticDataset([Path("12")], 2, 3, split)
             loader = build_loader(dataset, 2, 1, False, split == "train", persistent_workers=True)
@@ -268,7 +268,8 @@ class LoaderRepairTest(unittest.TestCase):
 class TemporalAuditTest(unittest.TestCase):
     def setUp(self):
         self.config = {
-            "dataset": {"name": "issm", "data_dir": "/data/ISSM/PIG_5000", "history_len": 1, "future_len": 180},
+            "dataset": {"name": "issm", "data_dir": "/data/ISSM/PIG_5000", "history_len": 1, "future_len": 180,
+                        "train_series_per_scenario_per_epoch": 60},
             "evaluation": {"known_steps": 60},
             "model": {"relative_time_scale": 180.0},
             "training": {"train_horizon_min": 24, "train_horizon_max": None},
@@ -280,7 +281,8 @@ class TemporalAuditTest(unittest.TestCase):
         self.assertEqual(semantics["target_train_horizon_max"], 180)
         self.assertEqual(semantics["history_indices"], [59])
         self.assertEqual(semantics["rollout_lengths"], [180])
-        self.config["dataset"].update(name="anuga", history_len=1, future_len=64)
+        self.config["dataset"].update(name="anuga", history_len=1, future_len=64,
+                                      train_series_per_scenario_per_epoch=9)
         self.config["evaluation"]["known_steps"] = 8
         self.config["model"]["relative_time_scale"] = 65
         validate_main_protocol(self.config, "anuga")

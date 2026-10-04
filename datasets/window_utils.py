@@ -1,4 +1,4 @@
-"""Window enumeration and epoch-level subsampling helpers."""
+"""Natural training-anchor enumeration and per-scenario series sampling."""
 
 from __future__ import annotations
 
@@ -53,38 +53,45 @@ def expand_windows(
     ]
 
 
-def sample_windows_for_epoch(
-    windows: Iterable[WindowMetadata],
+def sample_training_series_for_epoch(
+    natural_series: Iterable[WindowMetadata],
     scenario_count: int,
     rng: np.random.Generator,
-    windows_per_scenario: int | None = None,
-    epoch_num_windows: int | None = None,
+    train_series_per_scenario_per_epoch: int | None = None,
 ) -> list[WindowMetadata]:
-    """Sample an epoch subset while preserving scenario-first semantics."""
+    """Select the configured number of training series for every scenario.
 
-    windows = list(windows)
-    if windows_per_scenario is None and epoch_num_windows is None:
-        return windows
+    A series is identified by a scenario and natural history anchor. Its actual
+    prediction length is determined later by the independently sampled k_eff.
+    Include every unique anchor before drawing replacement extras when a
+    scenario has fewer natural anchors than the budget.
+    """
+
+    natural_series = list(natural_series)
+    budget = train_series_per_scenario_per_epoch
+    if budget is None:
+        return natural_series
+    if isinstance(budget, bool) or not isinstance(budget, (int, np.integer)) or budget < 1:
+        raise ValueError("train_series_per_scenario_per_epoch must be a positive integer or null.")
 
     scenario_groups: dict[int, list[WindowMetadata]] = {idx: [] for idx in range(scenario_count)}
-    for window in windows:
-        scenario_groups[window.scenario_index].append(window)
+    for series in natural_series:
+        scenario_groups[series.scenario_index].append(series)
 
     sampled: list[WindowMetadata] = []
     for scenario_index in range(scenario_count):
         group = scenario_groups[scenario_index]
         if not group:
-            continue
-
-        if windows_per_scenario is None or windows_per_scenario >= len(group):
-            sampled.extend(group)
-            continue
-
-        choice = rng.choice(len(group), size=windows_per_scenario, replace=False)
-        sampled.extend(group[int(idx)] for idx in choice)
-
-    if epoch_num_windows is not None and len(sampled) > epoch_num_windows:
-        choice = rng.choice(len(sampled), size=epoch_num_windows, replace=False)
-        sampled = [sampled[int(idx)] for idx in choice]
+            raise ValueError(
+                f"Training scenario {scenario_index} has no natural anchors for its H/K; "
+                "cannot provide train_series_per_scenario_per_epoch."
+            )
+        if len(group) >= budget:
+            choice = rng.choice(len(group), size=budget, replace=False)
+        else:
+            extras = rng.choice(len(group), size=budget - len(group), replace=True)
+            choice = np.concatenate((np.arange(len(group)), extras))
+            rng.shuffle(choice)
+        sampled.extend(group[int(index)] for index in choice)
 
     return sampled

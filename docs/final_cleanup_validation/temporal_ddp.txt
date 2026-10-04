@@ -1,0 +1,4 @@
+[Gloo] Rank 0 is connected to 1 peer ranks. Expected number of connected peer ranks is : 1
+[Gloo] Rank 1 is connected to 1 peer ranks. Expected number of connected peer ranks is : 1
+rank 0: graph-batched T2, private seed 77, dropout RNG, objective all-reduce, one forward PASS
+rank 1: graph-batched T2, private seed 78, dropout RNG, objective all-reduce, one forward PASS

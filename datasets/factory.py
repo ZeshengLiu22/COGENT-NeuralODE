@@ -45,10 +45,15 @@ def build_dataset(
     config: dict,
     normalizer=None,
     *,
-    sample_windows: bool = False,
+    build_training_series: bool | None = None,
 ):
+    """Build training series only for training, or trajectories for evaluation.
+
+    Standalone evaluation passes build_training_series=False even when reading
+    the train split. This is an internal construction choice, not a protocol.
+    """
+
     dataset_cfg = config["dataset"]
-    sampling_cfg = dataset_cfg.get("sampled_windows", {}) if sample_windows else {}
     return DATASET_REGISTRY[dataset_name](
         scenario_files=files,
         history_len=dataset_cfg["history_len"],
@@ -57,8 +62,8 @@ def build_dataset(
         stride=dataset_cfg.get("stride", 1),
         normalizer=normalizer,
         cache_in_memory=dataset_cfg.get("cache_in_memory", False),
-        epoch_num_windows=sampling_cfg.get("epoch_num_windows"),
-        windows_per_scenario=sampling_cfg.get("windows_per_scenario"),
+        train_series_per_scenario_per_epoch=dataset_cfg.get("train_series_per_scenario_per_epoch"),
+        build_training_series=build_training_series,
         seed=dataset_cfg.get("seed", config["seed"]),
         adapter_kwargs=dataset_cfg.get(dataset_name, {}),
     )
@@ -74,21 +79,18 @@ def build_loader(
     prefetch_factor: int | None = None,
     persistent_workers: bool = False,
 ):
-    """Construct a training-window loader; formal evaluation reads trajectories."""
+    """Construct a training-series loader; formal evaluation reads trajectories."""
 
     sampler = None
     if distributed:
         if getattr(dataset, "split", None) != "train":
             raise ValueError("Distributed loaders are for training; evaluate complete trajectories directly.")
         sampler = DistributedSampler(dataset, shuffle=shuffle)
-    resamples_each_epoch = (
-        getattr(dataset, "windows_per_scenario", None) is not None
-        or getattr(dataset, "epoch_num_windows", None) is not None
-    )
+    resamples_each_epoch = getattr(dataset, "train_series_per_scenario_per_epoch", None) is not None
     if getattr(dataset, "split", None) == "train" and resamples_each_epoch and num_workers > 0 and persistent_workers:
         logging.getLogger(__name__).warning(
-            "Disabling persistent_workers for the training loader because epoch window resampling "
-            "requires workers to receive the updated window list."
+            "Disabling persistent_workers for the training loader because epoch training-series resampling "
+            "requires workers to receive the updated training-series list."
         )
         persistent_workers = False
     kwargs = {

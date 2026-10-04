@@ -9,9 +9,7 @@ dataset:
   pin_memory: false
   prefetch_factor: 2
   persistent_workers: false
-  sampled_windows:
-    windows_per_scenario: null
-    epoch_num_windows: null
+  train_series_per_scenario_per_epoch: null
 normalization:
   std_floor: 1.0e-05
 training:

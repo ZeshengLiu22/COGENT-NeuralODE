@@ -488,28 +488,26 @@ class TemporalConfigTest(unittest.TestCase):
 
     def test_six_overlays_validate_and_merge_last(self):
         root = Path(__file__).resolve().parents[1]
-        names = (
-            "tc0_off.yaml", "tc1_adjacent_increment.yaml", "tc2_random_pair_increment.yaml",
-            "tc3_multiscale_rate.yaml", "tc4_rate_curvature.yaml", "tc5_hybrid.yaml",
-        )
-        overlay_dir = root / "configs" / "ablations" / "temporal_consistency"
-        self.assertEqual({path.name for path in overlay_dir.glob("*.yaml")}, set(names))
-        for name, mode in zip(names, ("none", *MODES)):
-            with self.subTest(name=name):
-                merged = load_config_bundle([root / "configs" / "default.yaml", overlay_dir / name])
-                tc_cfg = merged["training"]["temporal_consistency"]
-                validate_temporal_consistency_config(tc_cfg)
-                self.assertEqual(tc_cfg["mode"], mode)
-                self.assertEqual(tc_cfg["enabled"], mode != "none")
-                self.assertEqual(tc_cfg["weight"], 1.0)
-                self.assertNotIn("balancing", tc_cfg)
-                if mode != "none":
-                    self.assertEqual(tc_cfg["penalty"], "mse")
-                if mode == "random_pair_increment":
-                    self.assertEqual(tc_cfg["random_pair"]["num_pairs"], 1)
-                if mode == "hybrid":
-                    self.assertEqual(tc_cfg["rate"]["lags"], [3, 6, 12])
-                    self.assertTrue(all(value == 1.0 for value in tc_cfg["hybrid"].values()))
+        names = tuple(f"tc{index}.yaml" for index in range(6))
+        for dataset in ("issm", "anuga"):
+            overlay_dir = root / "configs" / "ablations" / dataset / "temporal_consistency"
+            self.assertEqual({path.name for path in overlay_dir.glob("*.yaml")}, set(names))
+            for name, mode in zip(names, ("none", *MODES)):
+                with self.subTest(dataset=dataset, name=name):
+                    merged = load_config_bundle([root / "configs" / "default.yaml", overlay_dir / name])
+                    tc_cfg = merged["training"]["temporal_consistency"]
+                    validate_temporal_consistency_config(tc_cfg)
+                    self.assertEqual(tc_cfg["mode"], mode)
+                    self.assertEqual(tc_cfg["enabled"], mode != "none")
+                    self.assertEqual(tc_cfg["weight"], 1.0)
+                    self.assertNotIn("balancing", tc_cfg)
+                    if mode != "none":
+                        self.assertEqual(tc_cfg["penalty"], "mse")
+                    if mode == "random_pair_increment":
+                        self.assertEqual(tc_cfg["random_pair"]["num_pairs"], 1)
+                    if mode == "hybrid":
+                        self.assertEqual(tc_cfg["rate"]["lags"], [3, 6, 12])
+                        self.assertTrue(all(value == 1.0 for value in tc_cfg["hybrid"].values()))
 
 
 if __name__ == "__main__":

@@ -12,7 +12,7 @@ from torch.utils.data import Dataset
 from torch_geometric.data import Data
 
 from .normalization import FeatureNormalizer
-from .window_utils import WindowMetadata, expand_windows, sample_windows_for_epoch
+from .window_utils import WindowMetadata, expand_windows, sample_training_series_for_epoch
 
 
 def _require_finite(name: str, array: np.ndarray) -> None:
@@ -94,7 +94,7 @@ class TrajectoryData:
 
 
 class BaseTemporalGraphDataset(Dataset):
-    """Scenario-first temporal graph dataset with fixed history and future windows."""
+    """Natural training series and complete trajectories for rollout evaluation."""
 
     dataset_name = "base"
 
@@ -107,10 +107,11 @@ class BaseTemporalGraphDataset(Dataset):
         stride: int = 1,
         normalizer: FeatureNormalizer | None = None,
         cache_in_memory: bool = False,
-        epoch_num_windows: int | None = None,
-        windows_per_scenario: int | None = None,
+        train_series_per_scenario_per_epoch: int | None = None,
         seed: int = 42,
         adapter_kwargs: Optional[dict[str, Any]] = None,
+        *,
+        build_training_series: bool | None = None,
     ) -> None:
         super().__init__()
         self.scenario_files = [Path(path) for path in scenario_files]
@@ -118,10 +119,13 @@ class BaseTemporalGraphDataset(Dataset):
         self.future_len = int(future_len)
         self.split = split
         self.stride = int(stride)
+        for name in ("history_len", "future_len", "stride"):
+            if getattr(self, name) < 1:
+                raise ValueError(f"{name} must be >= 1")
         self.normalizer = normalizer
         self.cache_in_memory = bool(cache_in_memory)
-        self.epoch_num_windows = epoch_num_windows
-        self.windows_per_scenario = windows_per_scenario
+        self.train_series_per_scenario_per_epoch = train_series_per_scenario_per_epoch
+        self.build_training_series = split == "train" if build_training_series is None else build_training_series
         self.seed = int(seed)
         self.adapter_kwargs = adapter_kwargs or {}
 
@@ -144,19 +148,20 @@ class BaseTemporalGraphDataset(Dataset):
                     "length": int(trajectory.times.shape[0]),
                 }
             )
-            self.all_windows.extend(
-                expand_windows(
-                    scenario_index=scenario_index,
-                    total_steps=trajectory.times.shape[0],
-                    history_len=self.history_len,
-                    future_len=self.future_len,
-                    stride=self.stride,
+            if self.build_training_series:
+                self.all_windows.extend(
+                    expand_windows(
+                        scenario_index=scenario_index,
+                        total_steps=trajectory.times.shape[0],
+                        history_len=self.history_len,
+                        future_len=self.future_len,
+                        stride=self.stride,
+                    )
                 )
-            )
 
         self.scenario_id_to_code = {name: idx for idx, name in enumerate(sorted(set(raw_ids)))}
         self.sim_id_to_code = {name: idx for idx, name in enumerate(sorted(set(sim_ids)))}
-        self.active_windows: list[WindowMetadata] = list(self.all_windows)
+        self.active_windows: list[WindowMetadata] = []
         self.set_epoch(0)
 
     def __len__(self) -> int:
@@ -215,19 +220,17 @@ class BaseTemporalGraphDataset(Dataset):
         return data
 
     def set_epoch(self, epoch: int) -> None:
-        """Resample active windows for the current epoch when configured."""
+        """Resample training series independently of the effective rollout length."""
 
-        if self.split != "train":
-            self.active_windows = list(self.all_windows)
+        if not self.build_training_series:
             return
 
         rng = np.random.default_rng(self.seed + int(epoch))
-        self.active_windows = sample_windows_for_epoch(
-            windows=self.all_windows,
+        self.active_windows = sample_training_series_for_epoch(
+            natural_series=self.all_windows,
             scenario_count=len(self.scenario_files),
             rng=rng,
-            windows_per_scenario=self.windows_per_scenario,
-            epoch_num_windows=self.epoch_num_windows,
+            train_series_per_scenario_per_epoch=self.train_series_per_scenario_per_epoch,
         )
 
     def iter_trajectories(self) -> list[TrajectoryData]:

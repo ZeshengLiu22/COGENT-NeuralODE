@@ -1,146 +1,168 @@
-# Configuration and evaluation refactor — 2026-10-04
+# Configuration, rollout evaluation, and final experiment cleanup — 2026-10-04
 
-The active workflow now separates training history H, maximum training future K,
-and absolute rollout start S. Formal validation, checkpoint selection, testing,
-and standalone inference all predict from S to trajectory end. The canonical
-entrypoint is `scripts/evaluate.py`; saved complete predictions support later
-comparisons without model inference.
+The active design separates H (history), K (maximum stored training future),
+S (rollout start), and B (per-scenario epoch series count). Formal validation,
+checkpoint selection, test, and standalone inference predict from S to the
+trajectory end. Only selected history H* propagates between formal phases.
 
-## Configuration migration
+This record incorporates the final cleanup after the earlier rollout-only
+refactor. [Current validation evidence](final_cleanup_validation/results.json)
+records the final checks. Reports under `refactor_validation/` describe the
+earlier commit and are not evidence for subsequent changes.
 
-Previously, dataset YAMLs, duplicated complete history/future bases, combined
-architecture presets, and loader overlays mixed data selection, protocol,
-architecture, and performance responsibilities. The old complete bases, separate
-paper-comparison protocol, combined upgrade presets, and duplicate evaluation
-scripts have been removed from the active tree. The shared-anchor restriction
-has been deleted entirely; H/K variants have their natural training windows.
-No compatibility aliases or filename-dependent protocol branches remain.
+## History reviewed and reconciled
 
-The new hierarchy is:
+The implementation/documentation review covered these milestones:
+
+| Commit | Useful historical context | Current disposition |
+| --- | --- | --- |
+| `d28666f` | Natural legal-anchor enumeration; original master and architecture/curriculum explanations | Preserve natural H/K-specific anchors and recover useful technical explanations |
+| `22e5298` | ANUGA history scans and complete rollout exports | Preserve canonical ANUGA forecasting and full artifacts |
+| `961c3eb` | Foundation repair: ISSM inputs, normalization, fixed relative time, checkpoint provenance; earlier common-anchor budgets | Preserve correctness repairs; replace common-anchor budgeting with B |
+| `f96cae3` | Configurable TC objectives | Preserve state plus optional TC |
+| `f8beea4` | Corrected per-graph pair sampling/RNG, stable RMSE, and launcher protocol preservation | Retain corrected loss behavior and cluster settings |
+| `b3c761b` | H/K/S config separation, natural anchors, rollout-only evaluation, complete postprocessing artifacts | Retain scientific meanings and extend with controlled epoch exposure |
+
+Historical explanations were checked against current adapters, normalizer,
+encoders, ODE, trainer, losses, evaluator, and artifact code. Archived concepts
+are not restored as runtime behavior. The active technical documents are in
+[the docs index](README.md); historical material under `old-files/`,
+`legacy-scripts/`, and `legacy-v2/` is provenance only.
+
+## Fixed exposure with natural anchors and variable horizons
+
+At anchor t, a training sample holds history `x[t-H+1:t+1]` and maximum future
+`x[t+1:t+K+1]`. Its actual prediction is the complete first k_eff future states,
+with k_eff sampled independently by the existing synchronized horizon sampler.
+
+At stride 1,
+
+\[
+N_{\mathrm{natural}}=T-H-K+1.
+\]
+
+Each scenario contributes B selected series. If N≥B, choose B distinct anchors
+without replacement. If 0<N<B, include all anchors once, draw B−N extras with
+replacement from that same scenario, then shuffle. This preserves unique-anchor
+coverage when the budget exceeds the natural set. A positive budget with no
+legal anchors is an error.
+
+`dataset.train_series_per_scenario_per_epoch` is the only epoch sampling
+budget field. Formal ISSM B=60 preserves canonical H1/K180 exposure on T240;
+ANUGA B=9 preserves H1/K64 exposure on T73. Therefore 28×60=1,680 ISSM and
+12×9=108 ANUGA training series are selected each epoch across every formal H/K
+variant. Both counts divide evenly among four ranks, requiring no DDP padding.
+
+This equalizes scenario exposure and series count, not k_eff, total target
+timesteps, exact anchors, or series ending time. The epoch-based optimizer/
+scheduler behavior is retained. The natural anchor set remains specific to H/K.
+For ANUGA H4/K64, six legal anchors yield six unique plus three repeated draws;
+H8/K64 yields both legal anchors once plus seven repeated draws.
+
+Validation/test/evaluation datasets no longer enumerate training anchors.
+They retain full trajectory access, normalizer, scenario identity, and mesh
+metadata. Standalone train-split evaluation also skips training-series expansion.
+
+## Scientific protocol preservation
+
+| Protocol | Data | Canonical H/K/S | B | Relative-time scale | Batch / minimum horizon / loss scale |
+| --- | --- | --- | ---: | ---: | --- |
+| ISSM | PIG_5000 | 1 / 180 / 60 | 60 | 180 | 8 / 24 / 100 |
+| ANUGA | Existing merged simulations | 1 / 64 / 8 | 9 | 65 | 1 / 8 / 1 |
+
+Formal history is `x[S-H:S]`, prediction `x[S:T]`, and H≤S<T.
+K30 does not cap an ISSM known60 rollout: it still predicts 180 states on T240.
+Null `train_horizon_max` inherits K; ANUGA K8 is valid with minimum 8.
+The relative-time scale remains fixed independently of K, S, or endpoint.
+
+The corrected ISSM inputs, ANUGA rainfall units/normalization, scenario splits,
+NODE2 dynamics, full-series loss, horizon curriculum, and corrected TC behavior
+are preserved. H/K remain checkpoint-authoritative in standalone evaluation;
+`evaluation.known_steps` remains the allowed temporal override.
+
+## Explicit dataset-scoped configurations and phases
+
+The stack is:
 
 ```text
-configs/default.yaml
-configs/datasets/{issm,anuga,adcirc}.yaml
-configs/protocols/{issm,anuga}/main.yaml
-configs/models/node2.yaml
-configs/ablations/{history,future_len,rollout_start,architecture,temporal_consistency}/
-configs/runtime/fast.yaml
+default -> dataset -> protocol -> model -> history -> architecture
+        -> training_horizon -> rollout_start -> temporal_consistency -> runtime
 ```
 
-This is also the merge order, with optional ablations before runtime. Recursive
-merging and whole-list replacement are unchanged. Every training entrypoint
-writes ordered `config_stack.txt` beside merged `config.json`.
+Scientific overlays live in separate `configs/ablations/issm/` and
+`configs/ablations/anuga/` trees. Each has history, architecture, training_horizon,
+rollout_start, and temporal_consistency directories. Each architecture file
+explicitly sets encoder, residual, ODE context, and relative time. `full.yaml`
+matches a01; a01–a16 cover every four-factor combination. TC overlays are
+`tc0.yaml` through `tc5.yaml`. Runtime fast loading does not enable in-memory cache.
 
-The rollout-start key is now `evaluation.known_steps`. The former validation
-mode toggle and evaluation loader settings are removed. Historical names,
-old directory structure, and the exact deleted-file inventory are retained only
-in the [historical migration details](../old-files/config-evaluation-history-20261004/migration_details.md)
-and [complete file inventory](../old-files/config-evaluation-history-20261004/file_inventory.json).
-Those files are records of this migration, not active instructions.
+| Phase | H | Architecture | K | S | TC |
+| --- | --- | --- | --- | --- | --- |
+| 1. History | 1…8 | Full | Canonical | Canonical | Off |
+| 2. Architecture | Selected H* | All 16 | Canonical | Canonical | Off |
+| 3. K | Selected H* | Full | Dataset K scan | Canonical | Off |
+| 4. TC | Selected H* | Full | Canonical | Canonical | TC0…TC5 |
 
-## Scientific semantics and preservation
+ISSM K scan is 30/45/60/75/90/120/150/180; ANUGA is
+8/16/24/32/40/48/56/64. Architecture and K winners do not propagate to other
+phases. Later-phase scripts contain visible fail-fast selected-H placeholders.
 
-| Protocol | Data | H | K | S | Relative-time scale | Batch / min horizon / loss scale |
-| --- | --- | ---: | ---: | ---: | ---: | --- |
-| ISSM | PIG_5000 | 1 | 180 | 60 | 180 | 8 / 24 / 100 |
-| ANUGA | Existing merged simulations | 1 | 64 | 8 | 65 | 1 / 8 / 1 |
+ISSM known60/90/120 robustness is separate evaluation-only work using the same
+final checkpoint without retraining/reselection. ANUGA retains known8.
 
-At start S, history is `[S-H, ..., S-1]` and prediction covers `[S, ..., T-1]`.
-Require `H <= S < T`. A null training horizon maximum still means K. A K30
-checkpoint still predicts 180 steps at known60 on T240. Relative-time scale is
-fixed for the model and does not change with K or S.
+## Launcher and documentation changes
 
-The corrected adapters, normalization, splits, model/ODE implementation,
-horizon sampling, and temporal-consistency implementation are unchanged. TC0–5
-YAML hyperparameters are preserved. The ADCIRC dataset config explicitly owns
-its previously inherited random split. ISSM data selection now lives in its
-dataset config; runtime settings contain only loader/cache options.
+Formal launchers occupy four trees under
+`launchers/{shell,slurm}/{issm,anuga}/` with phase directories 01–04.
+Each tree contains 38 complete independent experiment files: 8 history,
+16 architecture, 8 K, 6 TC. There are no experiment loops, Slurm arrays, generic
+workers, or shared experiment dispatchers. Slurm files use explicit known
+repository roots and copied environment/resource settings, avoiding spooled
+script path inference.
 
-The default architecture is Transformer + residual + ODE history context +
-relative time, latent96. Independent encoder/residual/context/time controls
-produce a 16-combination factorial, including LSTM. Explicit default H/K/start,
-architecture, and TC0 files remain for experiment readability.
+Top-level training scripts remain direct ad-hoc single-run entrypoints.
+Every active training launcher prints the full config stack including protocol.
+`config_stack.txt` remains the saved authoritative order. Historical launcher
+directories are retained beneath `legacy-scripts/`, excluded from active
+launcher/stale-reference audits, and are not recommended for new runs.
 
-The experiment order is **history → selected-H architecture → selected-model K
-→ selected-H/K/architecture TC → inference-only rollout-start robustness**.
-Later sweep phases require prior selections. Known60/90/120 use the same final
-checkpoint and H; they do not trigger retraining or H reselection.
+Restored active references are the substantial master technical handbook,
+architecture equations, exact curriculum equations, and formula-complete TC
+guide. The operating/configuration guides and docs index point to current
+paths and H*-only phase dependencies.
 
-## Evaluation and artifacts
+## Evaluation artifacts and postprocessing
 
-`Trainer` receives one training loader and three datasets. Validation/testing
-read complete trajectories. DDP shards scenarios without padding and reduces
-float64 error sums and element counts, including when a rank owns no scenario.
-The checkpoint criterion remains `whole_rollout_norm_rmse`.
+Evaluation reconstructs the checkpoint model, normalizer, H/K, solver, and exact
+splits. Runtime-only overrides allow data relocation, S, precision, output
+location, and device. DDP evaluates scenario shards without padding and reduces
+float64 error sums/counts. Selection remains `whole_rollout_norm_rmse`.
 
-Standalone evaluation reconstructs the model, normalizer, H/K, and exact split
-from the checkpoint. Only explicitly whitelisted runtime values can differ,
-including `evaluation.known_steps`; scientific overrides are rejected.
-Evaluation output names include split and start to keep each inference distinct.
+Complete schema-v2 compressed NPZ plus JSON metadata preserve normalized/
+physical predictions and targets, scenario/simulation identity, H/S, absolute
+indices, adapter times, lead steps, node identity, and mesh/normalizer
+fingerprints. ANUGA preserves supplied time; ISSM cell-format data preserve
+snapshot-index time without invented physical units.
 
-Schema-v2 compressed NPZ plus JSON metadata preserve complete physical and
-normalized predictions/targets, scenario/simulation identity, H/S, absolute
-indices, actual adapter times, lead steps, node identity, and mesh/normalization
-fingerprints. ANUGA uses supplied simulation time; the preserved ISSM cell
-adapter uses snapshot-index time, with no invented physical units.
+Postprocessing recomputes metrics without a model, validates artifact alignment,
+and supports equal-lead, common-tail, and lead/index/time slices. For ISSM
+starts 60/90/120, equal-lead 120 compares periods 60–179/90–209/120–239;
+common-tail compares 120–239 for every start.
 
-`scripts/postprocess_rollout.py` provides full recomputation, equal-lead,
-common-tail, lead/absolute/actual-time slices, and JSON/CSV reports. It validates
-scenario sets, node/channel structure, target/time alignment, normalization, and
-requested coverage. Equal-lead120 compares 60–179, 90–209, and 120–239; common
-tail compares 120–239 across all starts. Separate initial rollouts are required;
-subsequent slices use saved arrays only.
+## Validation scope
 
-## Important file changes
+The current [results record](final_cleanup_validation/results.json) and its
+linked logs are the evidence for CPU/unit checks, two-process Gloo TC and
+rollout checks, Python compilation, active shell syntax, and real-data
+foundation/prefix audits. The foundation audit exercises the actual series
+sampler across formal H/K scans, and the prefix audit uses rollout datasets.
 
-- Added the layered config tree above; removed all duplicated complete scan
-  bases and obsolete combined architecture/config variants.
-- Changed `datasets/window_utils.py`, `datasets/base_dataset.py`, and
-  `datasets/factory.py` for natural training anchors and trajectory evaluation.
-- Changed `training/trainer.py`, `training/evaluator.py`, `scripts/train.py`,
-  `scripts/evaluate.py`, and `utils/checkpoint_evaluation.py` for rollout-only
-  metrics, checkpoint authority, and config provenance.
-- Changed `utils/eval_artifacts.py`; added `utils/rollout_postprocess.py` and
-  `scripts/postprocess_rollout.py` for complete artifacts and safe comparisons.
-- Updated `train_issm.sh`, `train_anuga.sh`, their NODE2 helpers, and existing
-  local/Slurm history/future scheduling helpers. Added architecture/TC sweep
-  helpers and `scripts/sweep_config.sh`; removed misleading fixed-H future and
-  combined-upgrade wrappers.
-- Added `eval_rollout_tmux.sh` and `eval_rollout_start_sweep.sh`; removed duplicate
-  inference and obsolete evaluation wrappers.
-- Updated all three audit/solver scripts and the dataloader timing experiment.
-  Removed the duplicate loader recommendation YAML; the runtime config owns it.
-- Added `tests/test_configs.py`, `tests/test_rollout_artifacts.py`, and
-  `tests/check_rollout_ddp.py`; replaced obsolete assertions throughout the
-  existing configuration, launcher, dataset, checkpoint, training, smoke, and
-  TC suites.
-- Rewrote `handbook.md` and `config_setting.md`; updated TC documentation and
-  regenerated `docs/foundation_audit.json`. Superseded documentation/reports
-  moved under `old-files/config-evaluation-history-20261004/` with an explicit
-  historical notice. Existing `old-files/` and `legacy-v2/` material stays archived.
-
-The linked file inventory enumerates every added, deleted, moved, and modified
-path, including all YAML and shell variants.
-
-## Validation
-
-Validation ran with Python3.11 / PyTorch2.8.0+cu128 in the existing conda
-environment, on CPU. CUDA was unavailable. The formal training sweeps were not
-launched; the optimization checks use synthetic data and compact models.
-
-- Complete unit/config/launcher/evaluation/artifact/TC/smoke suite: **126 tests
-  pass**. Commands and scope are recorded in [validation results](refactor_validation/results.json)
-  and the [complete test log](refactor_validation/cpu_tests.txt).
-- Two-process Gloo temporal-consistency test: passes rank-specific RNG, dropout
-  isolation, global objective reduction, and one forward per training batch.
-- Two-process rollout test: passes uneven and empty-rank shards; all metrics
-  match single-rank evaluation within 1e-13.
-- Real foundation audit: ISSM36 trajectories ×240 snapshots, split28/4/4;
-  ANUGA20 ×73, split12/4/4. Canonical values, available horizons, and start bounds
-  pass. ANUGA normalized rainfall standard deviation is 0.999999981.
-- Real prefix audit: compact untrained model on ISSM2,852 and ANUGA68,464 nodes;
-  predictions for four steps exactly match the first four of eight-step runs.
-  See [prefix evidence](refactor_validation/real_prefix.json).
-- Shell syntax, Python compilation, whitespace checks, and the repository-wide
-  active stale-reference audit pass. Obsolete terms remain only in explicitly
-  historical directories.
+A bounded real-data CUDA smoke runner and independent ISSM/ANUGA submission
+files are provided under `tests/`. They exercise canonical model/data/splits,
+fixed series counts, four-rank training, sampled k_eff, rollout validation,
+best checkpoint, standalone evaluation, saved NPZ, and postprocessing.
+CUDA smoke has not been executed as of this cleanup record: this session's
+compute-node submission policy and login authentication prevent submission.
+Run the two smoke scripts from an authenticated cluster login and inspect their
+results before large sweeps. Neither CPU validation nor a smoke run is a formal
+accuracy result; no formal sweep results are claimed here.

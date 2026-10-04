@@ -110,7 +110,7 @@ def main() -> None:
         args.split,
         config,
         normalizer,
-        sample_windows=False,
+        build_training_series=False,
     )
     if not dataset.scenario_infos:
         raise RuntimeError(f"No scenarios are available for split={args.split}.")

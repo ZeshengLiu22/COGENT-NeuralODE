@@ -64,11 +64,20 @@ def main() -> None:
             {"train": train_files, "val": val_files, "test": test_files}, config["dataset"]["data_dir"],
         ))
 
-    train_dataset = build_dataset(dataset_name, train_files, split="train", config=config, normalizer=None, sample_windows=True)
+    train_dataset = build_dataset(dataset_name, train_files, split="train", config=config, normalizer=None)
     normalizer = FeatureNormalizer.fit_from_trajectories(train_dataset.iter_trajectories(), std_floor=float(config["normalization"]["std_floor"]))
     train_dataset.normalizer = normalizer
-    val_dataset = build_dataset(dataset_name, val_files, split="val", config=config, normalizer=normalizer, sample_windows=False)
-    test_dataset = build_dataset(dataset_name, test_files, split="test", config=config, normalizer=normalizer, sample_windows=False)
+    val_dataset = build_dataset(dataset_name, val_files, split="val", config=config, normalizer=normalizer)
+    test_dataset = build_dataset(dataset_name, test_files, split="test", config=config, normalizer=normalizer)
+
+    if rank == 0:
+        logger.info(
+            "training_series: scenarios=%d per_scenario_per_epoch=%s total_per_epoch=%d natural_anchors=%d",
+            len(train_dataset.scenario_infos),
+            config["dataset"].get("train_series_per_scenario_per_epoch"),
+            len(train_dataset),
+            len(train_dataset.all_windows),
+        )
 
     dataset_cfg = config["dataset"]
     num_workers = int(dataset_cfg.get("num_workers", 0))

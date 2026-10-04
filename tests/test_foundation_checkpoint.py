@@ -93,7 +93,8 @@ class CheckpointFoundationTest(unittest.TestCase):
         reloaded.load_state_dict(self.checkpoint["model_state"])
         dataset = build_dataset("adcirc", self.split_files["test"], "test", restored, self.normalizer)
         with torch.no_grad():
-            torch.testing.assert_close(self.model(dataset[0]), reloaded(dataset[0]), rtol=0, atol=0)
+            sample = dataset.get_rollout_data(0, start_t=restored["evaluation"]["known_steps"] - 1)
+            torch.testing.assert_close(self.model(sample), reloaded(sample), rtol=0, atol=0)
 
     def test_only_explicit_runtime_overrides_and_fp32_default(self) -> None:
         self.checkpoint["config"]["evaluation"]["amp_mode"] = "bf16"

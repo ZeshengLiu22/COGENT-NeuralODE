@@ -1,0 +1,11 @@
+training:
+  temporal_consistency:
+    enabled: true
+    mode: random_pair_increment
+    weight: 1.0
+    penalty: mse
+    rmse_eps: 1.0e-8
+    random_pair:
+      num_pairs: 1
+      min_lag: 1
+      max_lag: null
