@@ -26,7 +26,7 @@
     }
   ],
   "real_foundation_audit": {
-    "command": "python scripts/audit_foundation.py --data-root data --output docs/foundation_audit.json",
+    "command": "CUDA_VISIBLE_DEVICES= OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 PYTHONDONTWRITEBYTECODE=1 /work/09575/zeshengliu/conda_envs/torchpyg-cu128-cge/bin/python scripts/audit_foundation.py --data-root /scratch/09575/zeshengliu/COGENT-NeuralODE/data --output docs/foundation_audit.json",
     "result": "passed",
     "artifact": "../foundation_audit.json",
     "issm_splits": [
@@ -47,7 +47,11 @@
       "issm/training_horizon",
       "anuga/history",
       "anuga/training_horizon"
-    ]
+    ],
+    "generated_utc": "2026-10-04T20:21:51.140191+00:00",
+    "audit_code_commit": "2da5bd68330e8be74cfdd1958296a6395f57c310",
+    "log": "foundation_cache_refresh.txt",
+    "wall_seconds": 101.782
   },
   "real_prefix_rollout_audit": {
     "command": "python scripts/audit_relative_time.py --data-root data --output docs/final_cleanup_validation/real_prefix.json",
@@ -131,8 +135,8 @@
     "relative_markdown_links": "all resolve",
     "independent_formula_review": "sampler, architecture, curriculum and TC checked against current code"
   },
-  "updated_utc": "2026-10-04T18:59:32.650031+00:00",
-  "validation_note": "Original cleanup checks retain their original scope and logs. The runtime_cache_fix_validation section records the follow-up checks on the runtime/cache/account/documentation fix.",
+  "updated_utc": "2026-10-04T20:22:54.062301+00:00",
+  "validation_note": "Checks retain their recorded scope and logs. The real_foundation_audit entry and artifact were refreshed during cache_defaults_and_audit_refresh_validation. Earlier CPU unit, distributed and prefix-rollout audit entries were not rerun in this follow-up.",
   "runtime_cache_fix_validation": {
     "generated_utc": "2026-10-04T18:59:32.650031+00:00",
     "base_commit": "b3d5e2688cb68d06bb95cc1d83b69ac4cd4236ca",
@@ -170,5 +174,38 @@
       "reason": "Excluded from this follow-up at user request."
     },
     "scope": "CPU unit, configuration and launcher checks only; original distributed and real-data audit records above were not rerun."
+  },
+  "cache_defaults_and_audit_refresh_validation": {
+    "generated_utc": "2026-10-04T20:22:54.062301+00:00",
+    "base_commit": "2da5bd68330e8be74cfdd1958296a6395f57c310",
+    "revision_scope": "Follow-up working tree; entrypoint defaults, archive README, audit artifact and validation evidence committed together.",
+    "execution_device": "cpu",
+    "launcher_suite": {
+      "command": "CUDA_VISIBLE_DEVICES= OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 PYTHONDONTWRITEBYTECODE=1 /work/09575/zeshengliu/conda_envs/torchpyg-cu128-cge/bin/python -m unittest discover -s tests -p test_launchers.py -v",
+      "tests": 8,
+      "seconds": 14.948,
+      "result": "passed",
+      "formal_scripts": 152,
+      "active_shell_scripts": 158,
+      "log": "cache_defaults_launchers.txt"
+    },
+    "entrypoint_runtime_defaults": {
+      "train_issm.sh": "configs/runtime/issm_fast.yaml",
+      "train_anuga.sh": "configs/runtime/anuga_fast.yaml"
+    },
+    "foundation_audit": {
+      "result": "passed",
+      "artifact": "../foundation_audit.json",
+      "generated_utc": "2026-10-04T20:21:51.140191+00:00",
+      "log": "foundation_cache_refresh.txt",
+      "history_and_horizon_variants": 32,
+      "scientific_results_match_previous_audit": true,
+      "comparison_scope": "All fields equal after accounting for the generation timestamp, command, relocated data paths and updated runtime config filenames."
+    },
+    "archive_readme_cleanup": "Removed the deleted archive directory from the exclusion list.",
+    "cuda_smoke": {
+      "status": "not_run",
+      "reason": "Outside this follow-up scope."
+    }
   }
 }

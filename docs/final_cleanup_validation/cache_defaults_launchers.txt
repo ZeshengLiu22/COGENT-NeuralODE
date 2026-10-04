@@ -1,0 +1,13 @@
+test_active_shell_syntax (test_launchers.LauncherTest.test_active_shell_syntax) ... ok
+test_ad_hoc_launchers_print_protocol_and_named_overlays (test_launchers.LauncherTest.test_ad_hoc_launchers_print_protocol_and_named_overlays) ... ok
+test_all_formal_commands_and_independent_phase_controls (test_launchers.LauncherTest.test_all_formal_commands_and_independent_phase_controls) ... ok
+test_exact_four_launcher_trees_and_phase_counts (test_launchers.LauncherTest.test_exact_four_launcher_trees_and_phase_counts) ... ok
+test_formal_scripts_are_standalone_and_slurm_roots_are_explicit (test_launchers.LauncherTest.test_formal_scripts_are_standalone_and_slurm_roots_are_explicit) ... ok
+test_historical_launchers_are_retired (test_launchers.LauncherTest.test_historical_launchers_are_retired) ... ok
+test_phases_two_through_four_fail_before_environment_or_training (test_launchers.LauncherTest.test_phases_two_through_four_fail_before_environment_or_training) ... ok
+test_rollout_start_robustness_uses_same_checkpoint_without_training (test_launchers.LauncherTest.test_rollout_start_robustness_uses_same_checkpoint_without_training) ... ok
+
+----------------------------------------------------------------------
+Ran 8 tests in 14.948s
+
+OK

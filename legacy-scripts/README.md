@@ -12,5 +12,5 @@ Use `launchers/shell/{issm,anuga}/` or `launchers/slurm/{issm,anuga}/` for the
 four current formal phases. Each experiment has its own standalone launcher.
 Only selected Phase-1 history propagates into Phases 2–4.
 
-Exclude this directory, `old-files/`, and `legacy-v2/` from active launcher
+Exclude this directory and `old-files/` from active launcher
 syntax/provenance and stale-reference audits.

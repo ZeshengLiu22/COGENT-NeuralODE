@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Ad-hoc single run. Formal experiments use their standalone launchers/ files.
-# Defaults: ISSM, H1/K180/S60, full architecture, TC0, four ranks.
+# Defaults: ISSM, H1/K180/S60, full architecture, TC0, four ranks, trajectory cache on.
 set -euo pipefail
 PROJECT_ROOT="${PROJECT_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
 cd "$PROJECT_ROOT"
@@ -15,7 +15,7 @@ ARCHITECTURE_CONFIG="${ARCHITECTURE_CONFIG:-configs/ablations/issm/architecture/
 TRAINING_HORIZON_CONFIG="${TRAINING_HORIZON_CONFIG:-configs/ablations/issm/training_horizon/k180.yaml}"
 ROLLOUT_START_CONFIG="${ROLLOUT_START_CONFIG:-configs/ablations/issm/rollout_start/known60.yaml}"
 TEMPORAL_CONSISTENCY_CONFIG="${TEMPORAL_CONSISTENCY_CONFIG:-configs/ablations/issm/temporal_consistency/tc0.yaml}"
-RUNTIME_CONFIG="${RUNTIME_CONFIG-configs/runtime/fast.yaml}"
+RUNTIME_CONFIG="${RUNTIME_CONFIG-configs/runtime/issm_fast.yaml}"
 RUN_NAME="${RUN_NAME:-issm_node2_$(date -u +%Y%m%d_%H%M%S)}"
 LOG_FILE="${LOG_FILE:-$PROJECT_ROOT/logs/$RUN_NAME.log}"
 mkdir -p "$(dirname "$LOG_FILE")"

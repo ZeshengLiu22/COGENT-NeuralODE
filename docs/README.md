@@ -25,7 +25,9 @@ reference only; do not use them for new formal experiments.
 [Current cleanup validation](final_cleanup_validation/results.json) records the
 completed checks and current CUDA smoke status. Its `runtime_cache_fix_validation`
 section records the CPU/configuration/launcher recheck after the runtime and
-account fixes; earlier audit entries retain their original scope.
+account fixes. `cache_defaults_and_audit_refresh_validation` records the later
+entrypoint-default checks and regenerated real-data foundation audit. Earlier
+unit, distributed, and prefix-rollout audit entries retain their original scope.
 
 Validation logs and JSON evidence are records of the exact run that generated
 them. Files under `refactor_validation/` record the earlier rollout-only

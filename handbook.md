@@ -146,6 +146,10 @@ only. Do not use those scripts for new formal experiments.
 ## Ad-hoc entrypoints and direct Python
 
 Top-level `train_issm.sh` and `train_anuga.sh` are direct single-run entrypoints.
+They default to `runtime/issm_fast.yaml` and `runtime/anuga_fast.yaml`, respectively,
+with full-trajectory caching enabled. Set `RUNTIME_CONFIG=configs/runtime/fast.yaml`
+to use the generic loader without caching, or `RUNTIME_CONFIG=''` to omit the
+runtime overlay entirely.
 Formal launchers do not depend on them. For example:
 
 ```bash

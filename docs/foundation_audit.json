@@ -1,6 +1,6 @@
 {
-  "generated_utc": "2026-10-04T18:31:17.387873+00:00",
-  "command": "python scripts/audit_foundation.py --data-root data --output /tmp/cogent_foundation_audit.json",
+  "generated_utc": "2026-10-04T20:21:51.140191+00:00",
+  "command": "python scripts/audit_foundation.py --data-root /scratch/09575/zeshengliu/COGENT-NeuralODE/data --output docs/foundation_audit.json",
   "scope": "Read-only real-data audit; CPU; no optimization/training or accuracy claim",
   "formal_config_sources": {
     "issm": [
@@ -13,7 +13,7 @@
       "configs/ablations/issm/training_horizon/k180.yaml",
       "configs/ablations/issm/rollout_start/known60.yaml",
       "configs/ablations/issm/temporal_consistency/tc0.yaml",
-      "configs/runtime/fast.yaml"
+      "configs/runtime/issm_fast.yaml"
     ],
     "anuga": [
       "configs/default.yaml",
@@ -25,12 +25,12 @@
       "configs/ablations/anuga/training_horizon/k64.yaml",
       "configs/ablations/anuga/rollout_start/known8.yaml",
       "configs/ablations/anuga/temporal_consistency/tc0.yaml",
-      "configs/runtime/fast.yaml"
+      "configs/runtime/anuga_fast.yaml"
     ]
   },
   "dataset_relocation_note": "Preserve formal subdirectory choices while relocating their data root via --data-root.",
   "issm": {
-    "data_dir": "data/ISSM/PIG_5000",
+    "data_dir": "/scratch/09575/zeshengliu/COGENT-NeuralODE/data/ISSM/PIG_5000",
     "split_rates": {
       "train": [
         2,
@@ -549,7 +549,7 @@
     }
   },
   "anuga": {
-    "data_dir": "data/ANUGA/simulation_data_merged",
+    "data_dir": "/scratch/09575/zeshengliu/COGENT-NeuralODE/data/ANUGA/simulation_data_merged",
     "split_files": {
       "train": [
         "sim_0015_merged.npz",
@@ -759,10 +759,10 @@
         "configs/ablations/anuga/training_horizon/k64.yaml",
         "configs/ablations/anuga/rollout_start/known8.yaml",
         "configs/ablations/anuga/temporal_consistency/tc0.yaml",
-        "configs/runtime/fast.yaml"
+        "configs/runtime/anuga_fast.yaml"
       ],
       "history_note": "K tables use H1 for this structural audit; formal Phase 3 requires the selected Phase-1 H*.",
-      "data_dir": "data/ANUGA/simulation_data_merged",
+      "data_dir": "/scratch/09575/zeshengliu/COGENT-NeuralODE/data/ANUGA/simulation_data_merged",
       "sbatch_default_world_size": 4,
       "optimizer_steps_formula": "ceil(ceil(ceil(total_training_series_per_epoch / world_size) / per_rank_batch_size) / grad_accum_steps)",
       "training_sampler_note": "Formal totals divide by four without padding; other world sizes use PyTorch DistributedSampler semantics.",
@@ -1038,10 +1038,10 @@
         "configs/ablations/issm/training_horizon/k180.yaml",
         "configs/ablations/issm/rollout_start/known60.yaml",
         "configs/ablations/issm/temporal_consistency/tc0.yaml",
-        "configs/runtime/fast.yaml"
+        "configs/runtime/issm_fast.yaml"
       ],
       "history_note": "K tables use H1 for this structural audit; formal Phase 3 requires the selected Phase-1 H*.",
-      "data_dir": "data/ISSM/PIG_5000",
+      "data_dir": "/scratch/09575/zeshengliu/COGENT-NeuralODE/data/ISSM/PIG_5000",
       "sbatch_default_world_size": 4,
       "optimizer_steps_formula": "ceil(ceil(ceil(total_training_series_per_epoch / world_size) / per_rank_batch_size) / grad_accum_steps)",
       "training_sampler_note": "Formal totals divide by four without padding; other world sizes use PyTorch DistributedSampler semantics.",
@@ -1317,10 +1317,10 @@
         "configs/ablations/issm/training_horizon/<variant>.yaml",
         "configs/ablations/issm/rollout_start/known60.yaml",
         "configs/ablations/issm/temporal_consistency/tc0.yaml",
-        "configs/runtime/fast.yaml"
+        "configs/runtime/issm_fast.yaml"
       ],
       "history_note": "K tables use H1 for this structural audit; formal Phase 3 requires the selected Phase-1 H*.",
-      "data_dir": "data/ISSM/PIG_5000",
+      "data_dir": "/scratch/09575/zeshengliu/COGENT-NeuralODE/data/ISSM/PIG_5000",
       "sbatch_default_world_size": 4,
       "optimizer_steps_formula": "ceil(ceil(ceil(total_training_series_per_epoch / world_size) / per_rank_batch_size) / grad_accum_steps)",
       "training_sampler_note": "Formal totals divide by four without padding; other world sizes use PyTorch DistributedSampler semantics.",
@@ -1596,10 +1596,10 @@
         "configs/ablations/anuga/training_horizon/<variant>.yaml",
         "configs/ablations/anuga/rollout_start/known8.yaml",
         "configs/ablations/anuga/temporal_consistency/tc0.yaml",
-        "configs/runtime/fast.yaml"
+        "configs/runtime/anuga_fast.yaml"
       ],
       "history_note": "K tables use H1 for this structural audit; formal Phase 3 requires the selected Phase-1 H*.",
-      "data_dir": "data/ANUGA/simulation_data_merged",
+      "data_dir": "/scratch/09575/zeshengliu/COGENT-NeuralODE/data/ANUGA/simulation_data_merged",
       "sbatch_default_world_size": 4,
       "optimizer_steps_formula": "ceil(ceil(ceil(total_training_series_per_epoch / world_size) / per_rank_batch_size) / grad_accum_steps)",
       "training_sampler_note": "Formal totals divide by four without padding; other world sizes use PyTorch DistributedSampler semantics.",

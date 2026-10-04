@@ -26,7 +26,8 @@ duplicated. No shared architecture/TC tree hides formal provenance.
 
 The safe shared loader default is `dataset.cache_in_memory: false`.
 `runtime/fast.yaml` does not override it and contains no scientific settings.
-Formal ISSM/ANUGA launchers instead select `runtime/issm_fast.yaml` or
+Formal ISSM/ANUGA launchers and the top-level `train_issm.sh`/`train_anuga.sh`
+defaults select `runtime/issm_fast.yaml` or
 `runtime/anuga_fast.yaml`, which retain the same loader settings and explicitly
 set `cache_in_memory: true` to reuse full trajectories across series and epochs.
 Epoch resampling requires workers to see current series indices, so training
