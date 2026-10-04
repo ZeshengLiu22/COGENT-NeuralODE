@@ -7,23 +7,7 @@ if [[ ! "${HISTORY_LEN:-}" =~ ^[1-8]$ ]]; then
 fi
 
 PROJECT_ROOT="${PROJECT_ROOT:-/scratch/09575/zeshengliu/COGENT-NeuralODE}"
-ACTIVATE_SCRIPT="${PROJECT_ROOT}/sbatch_scripts/_activate_torchpyg_cge.sh"
-STAMPEDE3_PYTHON="/work2/09575/zeshengliu/conda_envs/torchpyg-cu128-cge/bin/python"
-
-if [[ ! -d "${PROJECT_ROOT}" ]]; then
-  echo "Project root not found: ${PROJECT_ROOT}" >&2
-  exit 1
-fi
-if [[ ! -f "${ACTIVATE_SCRIPT}" ]]; then
-  echo "Activation script not found: ${ACTIVATE_SCRIPT}" >&2
-  exit 1
-fi
-if [[ -z "${PYTHON_BIN:-}" && -x "${STAMPEDE3_PYTHON}" ]]; then
-  export PYTHON_BIN="${STAMPEDE3_PYTHON}"
-fi
-
-# shellcheck disable=SC1090
-source "${ACTIVATE_SCRIPT}"
+PYTHON_BIN="${PYTHON_BIN:-/work2/09575/zeshengliu/conda_envs/torchpyg-cu128-cge/bin/python}"
 
 cd "${PROJECT_ROOT}"
 mkdir -p logs outputs
@@ -44,19 +28,6 @@ DATASET_CONFIG="${DATASET_CONFIG:-configs/anuga.yaml}"
 MODEL_CONFIG="${MODEL_CONFIG:-configs/model_node2.yaml}"
 EXTRA_CONFIGS="${EXTRA_CONFIGS:-configs/ANUGA_History_Scan/anuga_fast_loader.yaml}"
 TRAIN_ARGS="${TRAIN_ARGS:-}"
-
-for config_path in "${BASE_CONFIG}" "${DATASET_CONFIG}" "${MODEL_CONFIG}"; do
-  if [[ ! -f "${config_path}" ]]; then
-    echo "Config not found: ${config_path}" >&2
-    exit 1
-  fi
-done
-for extra_config in ${EXTRA_CONFIGS}; do
-  if [[ ! -f "${extra_config}" ]]; then
-    echo "Extra config not found: ${extra_config}" >&2
-    exit 1
-  fi
-done
 
 MASTER_ADDR="${MASTER_ADDR:-127.0.0.1}"
 if [[ -n "${SLURM_JOB_ID:-}" ]]; then
@@ -91,7 +62,7 @@ export TORCH_DISTRIBUTED_DEBUG="${TORCH_DISTRIBUTED_DEBUG:-OFF}"
   echo "[$(date -u +%F' '%T)] log_file=${LOG_FILE}"
 } | tee -a "${LOG_FILE}"
 
-"${PYTHON_BIN}" -c "import sys; import torch, torch_geometric, torchdiffeq, torchcde, yaml, numpy, scipy; print('python:', sys.executable); print('torch:', torch.__version__); print('cuda:', torch.cuda.is_available()); print('device_count:', torch.cuda.device_count())" 2>&1 | tee -a "${LOG_FILE}"
+"${PYTHON_BIN}" -c "import sys; import torch; print('python:', sys.executable); print('torch:', torch.__version__); print('cuda:', torch.cuda.is_available()); print('device_count:', torch.cuda.device_count())" 2>&1 | tee -a "${LOG_FILE}"
 
 train_cmd=(
   "${PYTHON_BIN}" -m torch.distributed.run

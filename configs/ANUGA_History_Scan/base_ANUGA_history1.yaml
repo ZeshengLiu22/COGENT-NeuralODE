@@ -26,7 +26,6 @@ normalization:
   std_floor: 1.0e-5
 
 model:
-  name: node1
   latent_dim: 64
   dropout: 0.0
   decoder_hidden_dims: [64, 64]
@@ -41,7 +40,6 @@ model:
     lstm_hidden_dim: 96
     lstm_num_layers: 1
     history_encoder_type: transformer
-    use_transformer_history: true
     history_transformer_num_layers: 2
     history_transformer_num_heads: 4
     history_transformer_ff_dim: 384
@@ -58,13 +56,11 @@ model:
 
 solver:
   ode_method: midpoint
-  cde_method: rk4
-  interpolation: hermite_cubic_backward #linear
+  interpolation: hermite_cubic_backward
   rtol: 1.0e-4
   atol: 1.0e-5
   use_adjoint: false
   ode_options: null
-  cde_options: null
 
 training:
   epochs: 300
@@ -83,7 +79,6 @@ training:
     enabled: true
     epochs: 120
     warmup_fractions: [0.40, 0.55, 0.70, 0.85]
-  log_every: 1
   val_every: 1
 
 evaluation:

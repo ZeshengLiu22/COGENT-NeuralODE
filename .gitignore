@@ -2,6 +2,7 @@
 /data/
 /outputs/
 /logs/
+/old-files/logs/
 experiments/**/outputs/
 experiments/**/runs/
 experiments/**/formal_smoke_outputs/

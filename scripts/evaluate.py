@@ -13,9 +13,8 @@ ensure_project_root_on_path()
 import torch
 from torch_geometric.loader import DataLoader
 
-from datasets import ADCIRCDataset, ANUGADataset, ISSMDataset
+from datasets.factory import build_dataset, build_splits
 from datasets.normalization import FeatureNormalizer
-from datasets.split_utils import discover_files, issm_rate_modulo_split, random_split
 from models import build_model
 from utils import configure_logging, load_config_bundle
 from utils.eval_artifacts import (
@@ -25,13 +24,6 @@ from utils.eval_artifacts import (
     save_evaluation_artifacts,
     summarize_window_bundle,
 )
-
-
-DATASET_REGISTRY = {
-    "anuga": ANUGADataset,
-    "adcirc": ADCIRCDataset,
-    "issm": ISSMDataset,
-}
 
 
 def parse_args() -> argparse.Namespace:
@@ -55,44 +47,8 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def build_split_files(config: dict) -> tuple[list[Path], list[Path], list[Path]]:
-    dataset_cfg = config["dataset"]
-    split_cfg = dataset_cfg["split"]
-    files = discover_files(dataset_cfg["data_dir"], dataset_cfg["file_patterns"])
-    strategy = str(split_cfg.get("strategy", "random")).lower()
-    if strategy == "issm_rate_modulo":
-        return issm_rate_modulo_split(files, modulo=int(split_cfg.get("modulo", 20)), val_remainder=int(split_cfg.get("val_remainder", 0)), test_remainder=int(split_cfg.get("test_remainder", 10)))
-    return random_split(files, train=float(split_cfg["train"]), val=float(split_cfg["val"]), test=float(split_cfg["test"]), seed=int(split_cfg.get("seed", config["seed"])))
-
-
-def build_dataset(
-    dataset_name: str,
-    files: list[Path],
-    split: str,
-    config: dict,
-    normalizer,
-    *,
-    history_len: int | None = None,
-    future_len: int | None = None,
-):
-    dataset_cls = DATASET_REGISTRY[dataset_name]
-    dataset_cfg = config["dataset"]
-    return dataset_cls(
-        scenario_files=files,
-        history_len=int(dataset_cfg["history_len"] if history_len is None else history_len),
-        future_len=int(dataset_cfg["future_len"] if future_len is None else future_len),
-        split=split,
-        stride=int(dataset_cfg.get("stride", 1)),
-        normalizer=normalizer,
-        cache_in_memory=bool(dataset_cfg.get("cache_in_memory", False)),
-        seed=int(dataset_cfg.get("seed", config["seed"])),
-        adapter_kwargs=dataset_cfg.get(dataset_name, {}),
-    )
-
-
 def resolve_device(device_name: str) -> torch.device:
-    requested = device_name.strip().lower()
-    if requested == "auto":
+    if device_name == "auto":
         return torch.device("cuda" if torch.cuda.is_available() else "cpu")
     device = torch.device(device_name)
     if device.type == "cuda" and not torch.cuda.is_available():
@@ -108,7 +64,7 @@ def main() -> None:
     logger = configure_logging()
     device = resolve_device(args.device)
 
-    dataset_name = str(config["dataset"]["name"]).lower()
+    dataset_name = config["dataset"]["name"]
     train_history_len = int(config["dataset"]["history_len"])
     train_future_len = int(config["dataset"]["future_len"])
     eval_history_len = train_history_len if args.history_len is None else int(args.history_len)
@@ -117,7 +73,7 @@ def main() -> None:
         raise ValueError(f"--history-len must be >= 1, got {eval_history_len}.")
     if eval_future_len < 1:
         raise ValueError(f"--future-len must be >= 1, got {eval_future_len}.")
-    train_files, val_files, test_files = build_split_files(config)
+    train_files, val_files, test_files = build_splits(config)
     split_files = {"train": train_files, "val": val_files, "test": test_files}
     dataset = build_dataset(
         dataset_name,
@@ -142,7 +98,7 @@ def main() -> None:
 
     sample = dataset[0]
     model = build_model(config, sample.x_static.shape[-1], sample.force_hist.shape[-1], sample.state_hist.shape[-1])
-    load_result = model.load_state_dict(checkpoint["model_state"], strict=False)
+    model.load_state_dict(checkpoint["model_state"])
     model.to(device)
     model.eval()
     if device.type == "cuda":
@@ -157,10 +113,6 @@ def main() -> None:
         train_history_len,
         train_future_len,
     )
-    if load_result.missing_keys:
-        logger.warning("Missing state_dict keys during evaluation load: %s", load_result.missing_keys)
-    if load_result.unexpected_keys:
-        logger.warning("Unexpected state_dict keys during evaluation load: %s", load_result.unexpected_keys)
     bundle = collect_window_prediction_bundle(model, loader, normalizer, device=device)
     channel_names = infer_state_channel_names(dataset_name, state_dim=int(bundle["pred_phys"].shape[1]))
     summary = summarize_window_bundle(bundle, channel_names)

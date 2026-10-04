@@ -4,16 +4,11 @@ from __future__ import annotations
 
 import torch
 from torch import nn
-
-try:
-    from torchdiffeq import odeint, odeint_adjoint
-except ImportError as exc:  # pragma: no cover - dependency guard
-    raise ImportError("torchdiffeq is required for NODE models.") from exc
+from torchdiffeq import odeint, odeint_adjoint
 
 from models.common.interpolation import build_forcing_interpolant
 from models.common.mlp import MLP
 from models.continuous.node_latent_block import LatentNODEFunc
-from models.continuous.node_latent_block_structured import StructuredLatentNODEFunc
 from models.decoders.mlp_decoder import MLPDecoder
 from models.encoders.history_encoder import HistoryEncoder
 
@@ -24,27 +19,17 @@ class NODE2Model(nn.Module):
     def __init__(self, num_static: int, num_force: int, num_state: int, config: dict) -> None:
         super().__init__()
         model_cfg = config["model"]
-        latent_dim = int(model_cfg["latent_dim"])
-        decoder_hidden = list(model_cfg.get("decoder_hidden_dims", [latent_dim]))
-        decoder_activation = str(model_cfg.get("decoder_activation", "gelu"))
+        latent_dim = model_cfg["latent_dim"]
+        decoder_hidden = model_cfg.get("decoder_hidden_dims", [latent_dim])
+        decoder_activation = model_cfg.get("decoder_activation", "gelu")
         decoder_chunk_size = model_cfg.get("decoder_chunk_size", 262_144)
-        dropout = float(model_cfg.get("dropout", 0.0))
-        self.use_residual_decoder = bool(model_cfg.get("use_residual_decoder", True))
+        dropout = model_cfg.get("dropout", 0.0)
+        self.use_residual_decoder = model_cfg.get("use_residual_decoder", True)
 
         self.history_encoder = HistoryEncoder(num_static, num_force, num_state, config)
         init_dim = self.history_encoder.hist_context_dim + num_state + self.history_encoder.static_embed_dim
         self.init_mlp = MLP(init_dim, [latent_dim], latent_dim, activation=decoder_activation, dropout=dropout)
-        self.node2_vector_field_type = str(model_cfg.get("node2_vector_field_type", "v1_base")).lower()
-        if self.node2_vector_field_type == "v1_base":
-            dynamics_cls = LatentNODEFunc
-        elif self.node2_vector_field_type == "structured_v2":
-            dynamics_cls = StructuredLatentNODEFunc
-        else:
-            raise ValueError(
-                "model.node2_vector_field_type must be 'v1_base' or 'structured_v2', "
-                f"got {self.node2_vector_field_type!r}"
-            )
-        self.dynamics = dynamics_cls(
+        self.dynamics = LatentNODEFunc(
             latent_dim=latent_dim,
             force_dim=num_force,
             static_dim=self.history_encoder.static_embed_dim,
@@ -64,12 +49,12 @@ class NODE2Model(nn.Module):
     def forward(self, data) -> torch.Tensor:
         encoded = self.history_encoder(data.x_static, data.state_hist, data.force_hist, data.edge_index)
         init_inputs = torch.cat([encoded["hist_context"], encoded["last_state"], encoded["static_embed"]], dim=-1)
-        method = str(self.solver_cfg.get("ode_method", "midpoint"))
-        rtol = float(self.solver_cfg.get("rtol", 1e-4))
-        atol = float(self.solver_cfg.get("atol", 1e-5))
-        use_adjoint = bool(self.solver_cfg.get("use_adjoint", False))
-        interpolation = str(self.solver_cfg.get("interpolation", "linear"))
-        options = self.solver_cfg.get("ode_options", None)
+        method = self.solver_cfg.get("ode_method", "midpoint")
+        rtol = self.solver_cfg.get("rtol", 1e-4)
+        atol = self.solver_cfg.get("atol", 1e-5)
+        use_adjoint = self.solver_cfg.get("use_adjoint", False)
+        interpolation = self.solver_cfg.get("interpolation", "linear")
+        options = self.solver_cfg.get("ode_options")
         solver = odeint_adjoint if use_adjoint else odeint
 
         with torch.autocast(device_type=data.x_static.device.type, enabled=False):

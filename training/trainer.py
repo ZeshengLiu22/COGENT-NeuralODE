@@ -60,14 +60,6 @@ def _truncate_future_horizon(batch: Any, k_eff: int) -> Any:
     return batch
 
 
-def _build_grad_scaler(enabled: bool):
-    """Construct a GradScaler without triggering deprecation warnings across torch versions."""
-
-    if hasattr(torch, "amp") and hasattr(torch.amp, "GradScaler"):
-        return torch.amp.GradScaler("cuda", enabled=enabled)
-    return torch.cuda.amp.GradScaler(enabled=enabled)
-
-
 def _clip_grad_norm_fp64(parameters: list[torch.nn.Parameter], max_norm: float) -> torch.Tensor:
     """Clip gradients using an fp64 total norm to avoid false overflow failures."""
 
@@ -97,7 +89,7 @@ def _clip_grad_norm_fp64(parameters: list[torch.nn.Parameter], max_norm: float) 
 
 
 class Trainer:
-    """End-to-end trainer for the continuous graph emulator baselines."""
+    """End-to-end trainer for the graph NODE emulator."""
 
     def __init__(
         self,
@@ -131,14 +123,8 @@ class Trainer:
         self.epochs = int(training_cfg["epochs"])
         self.grad_accum_steps = int(training_cfg.get("grad_accum_steps", 1))
         self.max_grad_norm = float(training_cfg.get("max_grad_norm", 0.0))
-        self.grad_clip_norm_dtype = str(training_cfg.get("grad_clip_norm_dtype", "fp32")).lower()
-        if self.grad_clip_norm_dtype not in {"fp32", "fp64"}:
-            raise ValueError(
-                "training.grad_clip_norm_dtype must be 'fp32' or 'fp64', "
-                f"got {self.grad_clip_norm_dtype!r}"
-            )
-        self.loss_scale_factor = float(training_cfg.get("loss_scale_factor", training_cfg.get("scale_factor", 1.0)))
-        self.log_every = int(training_cfg.get("log_every", 10))
+        self.grad_clip_norm_dtype = training_cfg.get("grad_clip_norm_dtype", "fp32")
+        self.loss_scale_factor = training_cfg.get("loss_scale_factor", 1.0)
         self.val_every = int(training_cfg.get("val_every", 1))
         evaluation_cfg = config["evaluation"]
         self.full_rollout_on_val = bool(evaluation_cfg.get("full_rollout_on_val", True))
@@ -152,15 +138,15 @@ class Trainer:
             lr=float(training_cfg["lr"]),
             weight_decay=float(training_cfg.get("weight_decay", 0.0)),
         )
-        scheduler_name = str(training_cfg.get("scheduler", "none")).lower()
+        scheduler_name = training_cfg.get("scheduler", "none")
         if scheduler_name == "cosine":
             self.scheduler = CosineAnnealingLR(self.optimizer, T_max=self.epochs, eta_min=float(training_cfg.get("min_lr", 0.0)))
         else:
             self.scheduler = None
 
-        amp_mode = str(config["amp"]["mode"]).lower()
+        amp_mode = config["amp"]["mode"]
         self.amp_mode = amp_mode
-        self.scaler = _build_grad_scaler(enabled=(self.device.type == "cuda" and amp_mode == "fp16"))
+        self.scaler = torch.amp.GradScaler("cuda", enabled=(self.device.type == "cuda" and amp_mode == "fp16"))
         self.evaluator = Evaluator(self.model, normalizer, device=device, amp_mode=amp_mode)
         self.best_metric = float("inf")
         self.best_epoch = -1
@@ -177,34 +163,15 @@ class Trainer:
             )
         return horizon_max
 
-    def _curriculum_config(self, training_cfg: dict[str, Any]) -> dict[str, Any]:
-        raw_cfg = training_cfg.get("train_horizon_curriculum", True)
-        if isinstance(raw_cfg, dict):
-            enabled = bool(raw_cfg.get("enabled", True))
-            curriculum_epochs = int(raw_cfg.get("epochs", training_cfg.get("train_horizon_curriculum_epochs", 120)))
-            warmup_fractions = raw_cfg.get(
-                "warmup_fractions",
-                training_cfg.get("train_horizon_curriculum_warmup_fractions", [0.40, 0.55, 0.70, 0.85]),
-            )
-        else:
-            enabled = bool(raw_cfg)
-            curriculum_epochs = int(training_cfg.get("train_horizon_curriculum_epochs", 120))
-            warmup_fractions = training_cfg.get("train_horizon_curriculum_warmup_fractions", [0.40, 0.55, 0.70, 0.85])
-        return {
-            "enabled": enabled,
-            "epochs": curriculum_epochs,
-            "warmup_fractions": warmup_fractions,
-        }
-
     def _epoch_train_horizon_max(self, epoch: int, training_cfg: dict[str, Any], horizon_min: int, target_horizon_max: int) -> int:
-        curriculum_cfg = self._curriculum_config(training_cfg)
+        curriculum_cfg = training_cfg.get("train_horizon_curriculum", {})
         return curriculum_horizon_max(
             epoch=epoch,
             k_min=horizon_min,
             target_k_max=target_horizon_max,
-            enabled=bool(curriculum_cfg["enabled"]),
-            curriculum_epochs=int(curriculum_cfg["epochs"]),
-            warmup_fractions=curriculum_cfg["warmup_fractions"],
+            enabled=curriculum_cfg.get("enabled", True),
+            curriculum_epochs=curriculum_cfg.get("epochs", 120),
+            warmup_fractions=curriculum_cfg.get("warmup_fractions", [0.40, 0.55, 0.70, 0.85]),
         )
 
     def fit(self) -> dict[str, Any]:
@@ -289,8 +256,6 @@ class Trainer:
         for step, batch in enumerate(self.train_loader, start=1):
             if (step - 1) % self.grad_accum_steps == 0:
                 current_k_eff = synchronized_horizon(horizon_mode, horizon_min, horizon_max, self.device)
-            if current_k_eff is None:
-                raise RuntimeError("Effective training horizon was not sampled before model forward.")
 
             batch = batch.to(self.device)
             batch = _truncate_future_horizon(batch, current_k_eff)
@@ -304,11 +269,6 @@ class Trainer:
             loss = rollout_mse(y_pred_loss, y_true_loss)
             loss = loss / self.grad_accum_steps
 
-            if not torch.isfinite(y_pred).all():
-                raise FloatingPointError(
-                    f"Non-finite model outputs at step={step}, k_eff={current_k_eff}, "
-                    f"t_future_max={float(batch.t_future.max())}, device={self.device}."
-                )
             if not torch.isfinite(loss):
                 raise FloatingPointError(
                     f"Non-finite loss at step={step}, k_eff={current_k_eff}, "

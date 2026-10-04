@@ -18,17 +18,14 @@ class LatentNODEFunc(nn.Module):
     def __init__(self, latent_dim: int, force_dim: int, static_dim: int, hist_dim: int, config: dict) -> None:
         super().__init__()
         model_cfg = config["model"]
-        continuous_cfg = config["model"]["continuous"]
-        hidden_dim = int(continuous_cfg["hidden_dim"])
-        num_layers = int(continuous_cfg.get("num_layers", 2))
-        layer_type = str(continuous_cfg.get("gnn_type", "sage"))
-        activation = str(continuous_cfg.get("activation", "softplus"))
-        dropout = float(continuous_cfg.get("dropout", 0.0))
-        self.use_history_in_ode = bool(model_cfg.get("use_history_in_ode", True))
-        self.use_relative_time = bool(model_cfg.get("use_relative_time", True))
-        self.relative_time_mode = str(model_cfg.get("relative_time_mode", "normalized")).lower()
-        if self.relative_time_mode != "normalized":
-            raise ValueError(f"Unsupported relative_time_mode: {self.relative_time_mode!r}")
+        continuous_cfg = model_cfg["continuous"]
+        hidden_dim = continuous_cfg["hidden_dim"]
+        num_layers = continuous_cfg.get("num_layers", 2)
+        layer_type = continuous_cfg.get("gnn_type", "sage")
+        activation = continuous_cfg.get("activation", "softplus")
+        dropout = continuous_cfg.get("dropout", 0.0)
+        self.use_history_in_ode = model_cfg.get("use_history_in_ode", True)
+        self.use_relative_time = model_cfg.get("use_relative_time", True)
 
         input_dim = latent_dim + force_dim + static_dim
         if self.use_history_in_ode:
@@ -45,11 +42,6 @@ class LatentNODEFunc(nn.Module):
             activation=activation,
             dropout=dropout,
         )
-        self.edge_index: torch.Tensor | None = None
-        self.static_embed: torch.Tensor | None = None
-        self.hist_context: torch.Tensor | None = None
-        self.time_scale: torch.Tensor | float | None = None
-        self.control = None
 
     def set_context(
         self,
@@ -63,26 +55,19 @@ class LatentNODEFunc(nn.Module):
         self.static_embed = static_embed
         self.hist_context = hist_context
         self.time_scale = time_scale
-        self.control = control
+        # Forcing is per-batch runtime data, not a checkpointed submodule.
+        self.evaluate_forcing = control.evaluate
 
     def _relative_time_feature(self, t: torch.Tensor, z: torch.Tensor) -> torch.Tensor:
-        if self.time_scale is None:
-            raise RuntimeError("LatentNODEFunc relative-time scale has not been set.")
-        t_tensor = t if torch.is_tensor(t) else torch.as_tensor(t, device=z.device, dtype=z.dtype)
-        t_tensor = t_tensor.to(device=z.device, dtype=z.dtype)
-        scale = self.time_scale if torch.is_tensor(self.time_scale) else torch.as_tensor(self.time_scale)
-        scale = scale.to(device=z.device, dtype=z.dtype).clamp_min(torch.finfo(z.dtype).eps)
+        t_tensor = t.to(device=z.device, dtype=z.dtype)
+        scale = torch.as_tensor(self.time_scale, device=z.device, dtype=z.dtype).clamp_min(torch.finfo(z.dtype).eps)
         rel_t = (t_tensor / scale).clamp(0.0, 1.0)
         return rel_t.reshape(1, 1).expand(z.shape[0], 1)
 
     def forward(self, t: torch.Tensor, z: torch.Tensor) -> torch.Tensor:
-        if self.edge_index is None or self.static_embed is None or self.control is None:
-            raise RuntimeError("LatentNODEFunc context has not been set.")
-        force_t = self.control.evaluate(t)
+        force_t = self.evaluate_forcing(t)
         input_parts = [z, force_t, self.static_embed]
         if self.use_history_in_ode:
-            if self.hist_context is None:
-                raise RuntimeError("LatentNODEFunc history context has not been set.")
             input_parts.append(self.hist_context)
         if self.use_relative_time:
             input_parts.append(self._relative_time_feature(t, z))

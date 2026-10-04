@@ -1,14 +1,11 @@
 model:
-  name: node2
   latent_dim: 96
   decoder_hidden_dims: [96, 96]
   use_residual_decoder: true
   use_history_in_ode: true
   use_relative_time: true
-  relative_time_mode: normalized
   history_encoder:
     history_encoder_type: transformer
-    use_transformer_history: true
     history_transformer_num_layers: 2
     history_transformer_num_heads: 4
     history_transformer_ff_dim: 384
@@ -18,6 +15,3 @@ model:
 
 solver:
   interpolation: hermite_cubic_backward
-
-
-# Default NODE upgrade v1 model

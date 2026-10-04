@@ -1,8 +1,0 @@
-model:
-  name: ncde1
-  latent_dim: 96
-  decoder_hidden_dims: [96, 96]
-
-solver:
-  interpolation: hermite_cubic_backward
-  cde_method: rk4

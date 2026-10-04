@@ -8,9 +8,7 @@ fi
 
 THIS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="${PROJECT_ROOT:-$(cd "${THIS_DIR}/.." && pwd)}"
-ACTIVATE_SCRIPT="${PROJECT_ROOT}/sbatch_scripts/_activate_torchpyg_cge.sh"
-# shellcheck disable=SC1091
-source "${ACTIVATE_SCRIPT}"
+PYTHON_BIN="${PYTHON_BIN:-/work/09575/zeshengliu/conda_envs/torchpyg-cu128-cge/bin/python}"
 
 cd "${PROJECT_ROOT}"
 
@@ -23,7 +21,7 @@ RUN_VARIANT="${RUN_VARIANT:-u11}"
 RUN_NAME="${RUN_NAME:-sigspatial_issm_node2_h${HISTORY_LEN}_future${FUTURE_LEN}_${RUN_VARIANT}_${RUN_STAMP}}"
 LOG_FILE="${LOG_FILE:-${PROJECT_ROOT}/logs/${RUN_NAME}.log}"
 
-FUTURE_CONFIG_ROOT="${FUTURE_CONFIG_ROOT:-${PROJECT_ROOT}/configs/Future_Len_Ablation}"
+FUTURE_CONFIG_ROOT="${FUTURE_CONFIG_ROOT:-${PROJECT_ROOT}/configs/ISSM_Future_Len_Ablation}"
 BASE_CONFIG="${BASE_CONFIG:-${FUTURE_CONFIG_ROOT}/base_ISSM_history${HISTORY_LEN}_future${FUTURE_LEN}.yaml}"
 DATASET_CONFIG="${DATASET_CONFIG:-configs/issm.yaml}"
 MODEL_CONFIG="${MODEL_CONFIG:-configs/model_node2.yaml}"
@@ -62,20 +60,7 @@ export TORCH_DISTRIBUTED_DEBUG="${TORCH_DISTRIBUTED_DEBUG:-OFF}"
   echo "[$(date -u +%F' '%T)] log_file=${LOG_FILE}"
 } | tee -a "${LOG_FILE}"
 
-"${PYTHON_BIN}" -c "import sys; import torch, torch_geometric, torchdiffeq, torchcde, yaml, numpy, scipy; print('python:', sys.executable); print('torch:', torch.__version__); print('cuda:', torch.cuda.is_available())" 2>&1 | tee -a "${LOG_FILE}"
-
-for config_path in "${BASE_CONFIG}" "${DATASET_CONFIG}" "${MODEL_CONFIG}"; do
-  if [[ ! -f "${config_path}" ]]; then
-    echo "Config not found: ${config_path}" >&2
-    exit 1
-  fi
-done
-for extra_config in ${EXTRA_CONFIGS}; do
-  if [[ ! -f "${extra_config}" ]]; then
-    echo "Extra config not found: ${extra_config}" >&2
-    exit 1
-  fi
-done
+"${PYTHON_BIN}" -c "import sys; import torch; print('python:', sys.executable); print('torch:', torch.__version__); print('cuda:', torch.cuda.is_available())" 2>&1 | tee -a "${LOG_FILE}"
 
 train_cmd=(
   "${PYTHON_BIN}" -m torch.distributed.run

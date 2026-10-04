@@ -25,7 +25,7 @@ Usage:
 	    --checkpoint outputs/<run_name>/best.pt \
 	    --config configs/ANUGA_History_Scan/base_ANUGA_history8.yaml \
 	    --config configs/anuga.yaml \
-	    --config configs/model_node1.yaml \
+	    --config configs/model_node2.yaml \
     [--split test] \
     [--device cuda] \
     [--history-len 8] \
@@ -35,7 +35,7 @@ Usage:
 
 Notes:
 	  - The wrapper starts a detached tmux session and writes a timestamped log under logs/.
-	  - Use configs/ANUGA_History_Scan/base_ANUGA_history<N>.yaml with configs/anuga.yaml, or configs/base_ISSM_history_N.yaml with configs/issm.yaml.
+	  - Use configs/ANUGA_History_Scan/base_ANUGA_history<N>.yaml with configs/anuga.yaml, or configs/ISSM_History_Scan/base_ISSM_history_1.yaml with configs/issm.yaml.
 	  - `--gpu` sets CUDA_VISIBLE_DEVICES for the launched evaluation.
 	  - Use `tmux attach -t <session-name>` to watch the run.
 EOF
@@ -86,13 +86,7 @@ run_eval() {
 import os
 import sys
 
-import numpy
-import scipy
 import torch
-import torch_geometric
-import torchcde
-import torchdiffeq
-import yaml
 
 print("python:", sys.executable)
 print("torch:", torch.__version__)
@@ -181,22 +175,10 @@ if [[ ${#CONFIGS[@]} -eq 0 ]]; then
   exit 1
 fi
 
-if [[ "$SPLIT" != "train" && "$SPLIT" != "val" && "$SPLIT" != "test" ]]; then
-  echo "--split must be one of: train, val, test." >&2
-  exit 1
-fi
-
 if [[ ! -f "$CHECKPOINT" ]]; then
   echo "Checkpoint not found: $CHECKPOINT" >&2
   exit 1
 fi
-
-for config_path in "${CONFIGS[@]}"; do
-  if [[ ! -f "$config_path" ]]; then
-    echo "Config not found: $config_path" >&2
-    exit 1
-  fi
-done
 
 SESSION_NAME="${SESSION_NAME:-$(default_session_name)}"
 SESSION_NAME="$(sanitize_session_name "$SESSION_NAME")"
@@ -210,16 +192,6 @@ fi
 if ! command -v tmux >/dev/null 2>&1; then
   echo "tmux is not installed or not on PATH." >&2
   exit 1
-fi
-
-"$PYTHON_BIN" -c "import torch, torch_geometric, torchdiffeq, torchcde, yaml, numpy, scipy" >/dev/null
-
-if [[ "$DEVICE" == cuda* ]]; then
-  if [[ -n "$GPU" ]]; then
-    CUDA_VISIBLE_DEVICES="$GPU" "$PYTHON_BIN" -c "import torch; assert torch.cuda.is_available(), 'CUDA is not available for the requested window evaluation.';" >/dev/null
-  else
-    "$PYTHON_BIN" -c "import torch; assert torch.cuda.is_available(), 'CUDA is not available for the requested window evaluation.';" >/dev/null
-  fi
 fi
 
 if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then

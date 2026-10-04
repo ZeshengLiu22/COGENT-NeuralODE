@@ -11,18 +11,13 @@ from torch import nn
 def get_activation(name: str) -> nn.Module:
     """Return an activation module by name."""
 
-    name = name.lower()
-    if name == "relu":
-        return nn.ReLU()
-    if name == "gelu":
-        return nn.GELU()
-    if name == "tanh":
-        return nn.Tanh()
-    if name == "softplus":
-        return nn.Softplus()
-    if name == "silu":
-        return nn.SiLU()
-    raise ValueError(f"Unsupported activation: {name}")
+    return {
+        "relu": nn.ReLU,
+        "gelu": nn.GELU,
+        "tanh": nn.Tanh,
+        "softplus": nn.Softplus,
+        "silu": nn.SiLU,
+    }[name]()
 
 
 class MLP(nn.Module):
@@ -38,7 +33,6 @@ class MLP(nn.Module):
         activate_last: bool = False,
     ) -> None:
         super().__init__()
-        hidden_dims = list(hidden_dims)
         dims = [input_dim, *hidden_dims, output_dim]
         layers: list[nn.Module] = []
         for index in range(len(dims) - 1):

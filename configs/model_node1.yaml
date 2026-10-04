@@ -1,5 +1,0 @@
-model:
-  name: node1
-
-solver:
-  interpolation: linear

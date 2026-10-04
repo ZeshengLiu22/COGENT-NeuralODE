@@ -265,7 +265,6 @@ def main() -> None:
             "training": {
                 "epochs": int(args.epochs),
                 "val_every": int(args.val_every),
-                "log_every": 1,
             },
             "evaluation": {
                 "full_rollout_on_val": not bool(args.skip_full_rollout_on_val),

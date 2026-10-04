@@ -4,15 +4,15 @@ set -euo pipefail
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$PROJECT_ROOT"
 
-SESSION_NAME="${SESSION_NAME:-anuga_node1}"
+SESSION_NAME="${SESSION_NAME:-anuga_node2}"
 NPROC="${NPROC:-4}"
-MODEL_CONFIG="${MODEL_CONFIG:-configs/model_node1.yaml}"
+MODEL_CONFIG="${MODEL_CONFIG:-configs/model_node2.yaml}"
 EXTRA_CONFIGS="${EXTRA_CONFIGS:-}"
 TRAIN_ARGS="${TRAIN_ARGS:-}"
 BASE_CONFIG="${BASE_CONFIG:-configs/ANUGA_History_Scan/base_ANUGA_history1.yaml}"
 PYTHON_BIN="${PYTHON_BIN:-$(command -v python)}"
 STAMP="${STAMP:-$(date -u +%Y%m%d_%H%M%S)}"
-RUN_NAME="${RUN_NAME:-anuga_node1_${STAMP}}"
+RUN_NAME="${RUN_NAME:-anuga_node2_${STAMP}}"
 LOG_DIR="${LOG_DIR:-$PROJECT_ROOT/logs}"
 LOG_FILE="${LOG_FILE:-$LOG_DIR/${RUN_NAME}.log}"
 
@@ -32,24 +32,9 @@ run_training() {
     echo "[$(date -u +%F' '%T)] log_file=$LOG_FILE"
   } | tee -a "$LOG_FILE"
 
-  "$PYTHON_BIN" -c "import sys; import torch, torch_geometric, torchdiffeq, torchcde, yaml, numpy, scipy; print('python:', sys.executable); print('torch:', torch.__version__); print('cuda:', torch.cuda.is_available())" 2>&1 | tee -a "$LOG_FILE"
+  "$PYTHON_BIN" -c "import sys; import torch; print('python:', sys.executable); print('torch:', torch.__version__); print('cuda:', torch.cuda.is_available())" 2>&1 | tee -a "$LOG_FILE"
 
-  if [[ ! -f "$BASE_CONFIG" ]]; then
-    echo "Base config not found: $BASE_CONFIG" >&2
-    exit 1
-  fi
-  if [[ ! -f "$MODEL_CONFIG" ]]; then
-    echo "Model config not found: $MODEL_CONFIG" >&2
-    exit 1
-  fi
   local extra_config
-  for extra_config in $EXTRA_CONFIGS; do
-    if [[ ! -f "$extra_config" ]]; then
-      echo "Extra config not found: $extra_config" >&2
-      exit 1
-    fi
-  done
-
   local train_cmd=(
     "$PYTHON_BIN" -m torch.distributed.run
     --nproc_per_node="$NPROC"
@@ -79,8 +64,6 @@ if ! command -v tmux >/dev/null 2>&1; then
   echo "tmux is not installed or not on PATH." >&2
   exit 1
 fi
-
-"$PYTHON_BIN" -c "import torch, torch_geometric, torchdiffeq, torchcde, yaml, numpy, scipy" >/dev/null
 
 if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
   echo "tmux session '$SESSION_NAME' already exists." >&2

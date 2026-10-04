@@ -16,10 +16,6 @@
 set -euo pipefail
 PROJECT_ROOT="/scratch/09575/zeshengliu/COGENT-NeuralODE"
 RUNNER="${PROJECT_ROOT}/sbatch_scripts_cercat_anuga/_run_anuga_node2_history_scan.sh"
-if [[ ! -f "${RUNNER}" ]]; then
-  echo "Shared runner not found: ${RUNNER}" >&2
-  exit 1
-fi
 export PROJECT_ROOT
 export HISTORY_LEN=4
 exec bash "${RUNNER}"

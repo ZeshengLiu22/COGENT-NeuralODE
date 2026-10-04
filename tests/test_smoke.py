@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import sys
 import tempfile
 import unittest
@@ -25,12 +26,12 @@ from datasets import ADCIRCDataset, ANUGADataset, ISSMDataset
 from datasets.normalization import FeatureNormalizer
 from models import build_model
 from models.continuous.node_latent_block import LatentNODEFunc
-from models.continuous.node_latent_block_structured import StructuredLatentNODEFunc
 from models.decoders.mlp_decoder import MLPDecoder
 from models.encoders.history_encoder import HistoryEncoder
-from run_full_rollout import load_evaluation_config, load_model_state_strict, load_saved_split_files
+from run_full_rollout import load_saved_split_files
 from training import Evaluator
-from training.trainer import _truncate_future_horizon
+from training.horizon_sampling import curriculum_horizon_max
+from training.trainer import Trainer, _truncate_future_horizon
 from utils.anuga_postprocess import generate_anuga_flood_maps
 from utils.eval_artifacts import (
     collect_full_rollout_prediction_bundle,
@@ -43,10 +44,9 @@ from utils.eval_artifacts import (
 )
 
 
-def _base_config(model_name: str) -> dict:
+def _base_config() -> dict:
     return {
         "model": {
-            "name": model_name,
             "latent_dim": 16,
             "dropout": 0.0,
             "decoder_hidden_dims": [16],
@@ -54,7 +54,6 @@ def _base_config(model_name: str) -> dict:
             "use_residual_decoder": True,
             "use_history_in_ode": True,
             "use_relative_time": True,
-            "relative_time_mode": "normalized",
             "history_encoder": {
                 "static_hidden_dims": [16],
                 "static_embed_dim": 16,
@@ -65,7 +64,6 @@ def _base_config(model_name: str) -> dict:
                 "lstm_hidden_dim": 16,
                 "lstm_num_layers": 1,
                 "history_encoder_type": "transformer",
-                "use_transformer_history": True,
                 "history_transformer_num_layers": 1,
                 "history_transformer_num_heads": 4,
                 "history_transformer_ff_dim": 64,
@@ -84,24 +82,21 @@ def _base_config(model_name: str) -> dict:
         },
         "solver": {
             "ode_method": "midpoint",
-            "cde_method": "rk4",
             "interpolation": "linear",
             "rtol": 1.0e-4,
             "atol": 1.0e-5,
             "use_adjoint": False,
             "ode_options": None,
-            "cde_options": None,
         },
     }
 
 
 def _node2_upgrade_off_config() -> dict:
-    config = _base_config("node2")
+    config = _base_config()
     config["model"]["use_residual_decoder"] = False
     config["model"]["use_history_in_ode"] = False
     config["model"]["use_relative_time"] = False
     config["model"]["history_encoder"]["history_encoder_type"] = "lstm"
-    config["model"]["history_encoder"]["use_transformer_history"] = False
     config["model"]["history_encoder"]["history_use_positional_encoding"] = False
     return config
 
@@ -189,25 +184,26 @@ class SmokeTest(unittest.TestCase):
         self.assertEqual(issm[0].y_future.shape[-1], 3)
         self.assertTrue(torch.allclose(anuga[0].t_future[0], torch.tensor([1.0, 2.0], dtype=torch.float32)))
 
-        sample = anuga[0]
-        for model_name in ("node1", "node2", "ncde1"):
-            model = build_model(_base_config(model_name), sample.x_static.shape[-1], sample.force_hist.shape[-1], sample.state_hist.shape[-1])
-            y_pred = model(sample)
-            self.assertEqual(tuple(y_pred.shape), tuple(sample.y_future.shape))
+        for dataset in (anuga, adcirc, issm):
+            with self.subTest(dataset=type(dataset).__name__):
+                sample = dataset[0]
+                model = build_model(_base_config(), sample.x_static.shape[-1], sample.force_hist.shape[-1], sample.state_hist.shape[-1])
+                y_pred = model(sample)
+                self.assertEqual(tuple(y_pred.shape), tuple(sample.y_future.shape))
+                self.assertTrue(torch.isfinite(y_pred).all())
 
     def test_node2_upgrade_flags_and_baseline_ablation(self) -> None:
         anuga = ANUGADataset([self.root / "sim_000_merged.npz"], history_len=3, future_len=2, split="train")
         sample = anuga[0]
 
         upgraded = build_model(
-            _base_config("node2"),
+            _base_config(),
             sample.x_static.shape[-1],
             sample.force_hist.shape[-1],
             sample.state_hist.shape[-1],
         )
         encoded = upgraded.history_encoder(sample.x_static, sample.state_hist, sample.force_hist, sample.edge_index)
-        self.assertTrue(upgraded.history_encoder.use_transformer_history)
-        self.assertEqual(upgraded.node2_vector_field_type, "v1_base")
+        self.assertEqual(upgraded.history_encoder.history_encoder_type, "transformer")
         self.assertIsInstance(upgraded.dynamics, LatentNODEFunc)
         self.assertTrue(upgraded.dynamics.use_history_in_ode)
         self.assertTrue(upgraded.dynamics.use_relative_time)
@@ -222,116 +218,16 @@ class SmokeTest(unittest.TestCase):
             sample.force_hist.shape[-1],
             sample.state_hist.shape[-1],
         )
-        self.assertFalse(baseline_like.history_encoder.use_transformer_history)
+        self.assertEqual(baseline_like.history_encoder.history_encoder_type, "lstm")
         self.assertFalse(baseline_like.dynamics.use_history_in_ode)
         self.assertFalse(baseline_like.dynamics.use_relative_time)
         self.assertFalse(baseline_like.use_residual_decoder)
         self.assertEqual(tuple(baseline_like(sample).shape), tuple(sample.y_future.shape))
 
-        structured_config = _base_config("node2")
-        structured_config["model"]["node2_vector_field_type"] = "structured_v2"
-        structured_config["model"]["structured_dynamics"] = {
-            "use_f_local": True,
-            "use_f_spatial": True,
-            "use_f_forcing": True,
-            "use_f_coupling": True,
-        }
-        structured = build_model(
-            structured_config,
-            sample.x_static.shape[-1],
-            sample.force_hist.shape[-1],
-            sample.state_hist.shape[-1],
-        )
-        self.assertEqual(structured.node2_vector_field_type, "structured_v2")
-        self.assertIsInstance(structured.dynamics, StructuredLatentNODEFunc)
-        self.assertTrue(structured.dynamics.use_f_local)
-        self.assertTrue(structured.dynamics.use_f_spatial)
-        self.assertTrue(structured.dynamics.use_f_forcing)
-        self.assertTrue(structured.dynamics.use_f_coupling)
-        self.assertTrue(structured.dynamics.use_history_in_ode)
-        self.assertTrue(structured.dynamics.use_relative_time)
-        self.assertEqual(structured.dynamics.term_norm_kind, "none")
-        self.assertEqual(structured.dynamics.fusion, "sum")
-        self.assertEqual(tuple(structured(sample).shape), tuple(sample.y_future.shape))
-
-        softmax_gated_config = deepcopy(structured_config)
-        softmax_gated_config["model"]["structured_dynamics"].update(
-            {
-                "term_norm": "rmsnorm",
-                "fusion": "softmax_gated",
-                "gate_init": "active_mean",
-            }
-        )
-        softmax_gated = build_model(
-            softmax_gated_config,
-            sample.x_static.shape[-1],
-            sample.force_hist.shape[-1],
-            sample.state_hist.shape[-1],
-        )
-        self.assertEqual(softmax_gated.dynamics.term_norm_kind, "rmsnorm")
-        self.assertEqual(softmax_gated.dynamics.fusion, "softmax_gated")
-        self.assertIsNotNone(softmax_gated.dynamics.term_gate_logits)
-        softmax_weights = torch.softmax(softmax_gated.dynamics.term_gate_logits, dim=0)
-        self.assertTrue(torch.allclose(softmax_weights, torch.full((4,), 0.25)))
-        self.assertEqual(tuple(softmax_gated(sample).shape), tuple(sample.y_future.shape))
-
-        direct_gated_config = deepcopy(structured_config)
-        direct_gated_config["model"]["structured_dynamics"].update(
-            {
-                "use_f_coupling": False,
-                "term_norm": "layernorm",
-                "fusion": "direct_gated",
-                "gate_init": "active_mean",
-            }
-        )
-        direct_gated = build_model(
-            direct_gated_config,
-            sample.x_static.shape[-1],
-            sample.force_hist.shape[-1],
-            sample.state_hist.shape[-1],
-        )
-        self.assertEqual(direct_gated.dynamics.term_norm_kind, "layernorm")
-        self.assertEqual(direct_gated.dynamics.fusion, "direct_gated")
-        self.assertEqual(direct_gated.dynamics.num_active_terms, 3)
-        self.assertIsNotNone(direct_gated.dynamics.term_gates)
-        active_gates = direct_gated.dynamics.term_gates[direct_gated.dynamics.active_term_indices]
-        self.assertTrue(torch.allclose(active_gates, torch.full((3,), 1.0 / 3.0)))
-        self.assertEqual(float(direct_gated.dynamics.term_gates[-1].detach()), 0.0)
-        self.assertEqual(tuple(direct_gated(sample).shape), tuple(sample.y_future.shape))
-
-        zero_terms_config = deepcopy(structured_config)
-        zero_terms_config["model"]["structured_dynamics"] = {
-            "use_f_local": False,
-            "use_f_spatial": False,
-            "use_f_forcing": False,
-            "use_f_coupling": False,
-        }
-        zero_terms = build_model(
-            zero_terms_config,
-            sample.x_static.shape[-1],
-            sample.force_hist.shape[-1],
-            sample.state_hist.shape[-1],
-        )
-        self.assertFalse(zero_terms.dynamics.use_f_local)
-        self.assertFalse(zero_terms.dynamics.use_f_spatial)
-        self.assertFalse(zero_terms.dynamics.use_f_forcing)
-        self.assertFalse(zero_terms.dynamics.use_f_coupling)
-        self.assertEqual(tuple(zero_terms(sample).shape), tuple(sample.y_future.shape))
-
-        invalid_fusion_config = deepcopy(structured_config)
-        invalid_fusion_config["model"]["structured_dynamics"]["fusion"] = "mystery"
-        with self.assertRaises(ValueError):
-            build_model(
-                invalid_fusion_config,
-                sample.x_static.shape[-1],
-                sample.force_hist.shape[-1],
-                sample.state_hist.shape[-1],
-            )
-
     def test_chunked_transformer_history_matches_unchunked(self) -> None:
         anuga = ANUGADataset([self.root / "sim_000_merged.npz"], history_len=3, future_len=2, split="train")
         sample = anuga[0]
-        full_config = _base_config("node2")
+        full_config = _base_config()
         full_config["model"]["history_encoder"]["history_transformer_chunk_size"] = None
         chunked_config = deepcopy(full_config)
         chunked_config["model"]["history_encoder"]["history_transformer_chunk_size"] = 2
@@ -360,34 +256,113 @@ class SmokeTest(unittest.TestCase):
 
         self.assertTrue(torch.allclose(full(x), chunked(x), atol=1.0e-6))
 
-    def test_node_models_integrate_from_zero_then_drop_initial_state(self) -> None:
+    def test_node2_integrates_from_zero_then_drops_initial_state(self) -> None:
         anuga = ANUGADataset([self.root / "sim_000_merged.npz"], history_len=3, future_len=2, split="train")
         sample = anuga[0]
         expected_times = torch.cat([torch.zeros(1), sample.t_future.squeeze(0).float()])
+        captured: dict[str, torch.Tensor] = {}
 
-        for model_name, patch_path in (
-            ("node1", "models.node1_model.odeint"),
-            ("node2", "models.node2_model.odeint"),
-        ):
-            with self.subTest(model=model_name):
-                captured: dict[str, torch.Tensor] = {}
+        def fake_odeint(func, y0, t, method=None, rtol=None, atol=None, options=None):
+            del func, method, rtol, atol, options
+            captured["times"] = t.detach().cpu()
+            return torch.stack([y0 + float(idx) for idx in range(t.numel())], dim=0)
 
-                def fake_odeint(func, y0, t, method=None, rtol=None, atol=None, options=None):
-                    del func, method, rtol, atol, options
-                    captured["times"] = t.detach().cpu()
-                    return torch.stack([y0 + float(idx) for idx in range(t.numel())], dim=0)
+        model = build_model(
+            _base_config(),
+            sample.x_static.shape[-1],
+            sample.force_hist.shape[-1],
+            sample.state_hist.shape[-1],
+        )
+        with patch("models.node2_model.odeint", side_effect=fake_odeint):
+            y_pred = model(sample)
 
-                model = build_model(
-                    _base_config(model_name),
-                    sample.x_static.shape[-1],
-                    sample.force_hist.shape[-1],
-                    sample.state_hist.shape[-1],
-                )
-                with patch(patch_path, side_effect=fake_odeint):
-                    y_pred = model(sample)
+        self.assertEqual(tuple(y_pred.shape), tuple(sample.y_future.shape))
+        self.assertTrue(torch.allclose(captured["times"], expected_times))
 
-                self.assertEqual(tuple(y_pred.shape), tuple(sample.y_future.shape))
-                self.assertTrue(torch.allclose(captured["times"], expected_times))
+    def test_node2_backward_reaches_encoder_dynamics_and_decoder(self) -> None:
+        anuga = ANUGADataset([self.root / "sim_000_merged.npz"], history_len=3, future_len=2, split="train")
+        anuga.normalizer = FeatureNormalizer.fit_from_trajectories(anuga.iter_trajectories())
+        batch = next(iter(DataLoader(anuga, batch_size=2, shuffle=False)))
+
+        for use_adjoint in (False, True):
+            with self.subTest(use_adjoint=use_adjoint):
+                torch.manual_seed(7)
+                config = _base_config()
+                config["solver"]["use_adjoint"] = use_adjoint
+                model = build_model(config, batch.x_static.shape[-1], batch.force_hist.shape[-1], batch.state_hist.shape[-1])
+                prediction = model(batch)
+                loss = torch.nn.functional.mse_loss(prediction, batch.y_future)
+                loss.backward()
+                self.assertTrue(torch.isfinite(loss))
+                for module in (model.history_encoder, model.init_mlp, model.dynamics, model.decoder):
+                    gradients = [parameter.grad for parameter in module.parameters() if parameter.grad is not None]
+                    self.assertTrue(gradients, type(module).__name__)
+                    self.assertTrue(all(torch.isfinite(gradient).all() for gradient in gradients))
+                    self.assertGreater(sum(float(gradient.abs().sum()) for gradient in gradients), 0.0)
+
+    def test_residual_decoder_anchors_predictions_to_last_observed_state(self) -> None:
+        anuga = ANUGADataset([self.root / "sim_000_merged.npz"], history_len=3, future_len=2, split="train")
+        sample = anuga[0]
+        model = build_model(_base_config(), sample.x_static.shape[-1], sample.force_hist.shape[-1], sample.state_hist.shape[-1])
+        with torch.no_grad():
+            for parameter in model.decoder.parameters():
+                parameter.zero_()
+            prediction = model(sample)
+        expected = sample.state_hist[:, -1:].expand_as(sample.y_future)
+        self.assertTrue(torch.equal(prediction, expected))
+
+    def test_horizon_curriculum_reaches_full_horizon_after_warmup(self) -> None:
+        curriculum = {
+            "k_min": 2,
+            "target_k_max": 12,
+            "enabled": True,
+            "curriculum_epochs": 8,
+            "warmup_fractions": [0.40, 0.55, 0.70, 0.85],
+        }
+        caps = [curriculum_horizon_max(epoch=epoch, **curriculum) for epoch in range(1, 10)]
+        self.assertEqual(caps, [6, 6, 8, 8, 9, 9, 11, 11, 12])
+        self.assertEqual(curriculum_horizon_max(epoch=1, **{**curriculum, "enabled": False}), 12)
+
+    def test_training_saves_and_reloads_checkpoint_with_curriculum(self) -> None:
+        torch.manual_seed(7)
+        anuga = ANUGADataset([self.root / "sim_000_merged.npz"], history_len=3, future_len=2, split="train")
+        normalizer = FeatureNormalizer.fit_from_trajectories(anuga.iter_trajectories())
+        anuga.normalizer = normalizer
+        loader = DataLoader(anuga, batch_size=2, shuffle=False)
+        sample = anuga[0]
+        config = _base_config()
+        config.update({
+            "training": {
+                "epochs": 1,
+                "lr": 1.0e-3,
+                "max_grad_norm": 1.0,
+                "train_horizon_min": 1,
+                "train_horizon_max": 2,
+                "train_horizon_curriculum": {
+                    "enabled": True,
+                    "epochs": 4,
+                    "warmup_fractions": [0.4, 0.55, 0.7, 0.85],
+                },
+            },
+            "evaluation": {"full_rollout_on_val": False, "checkpoint_metric": "rmse"},
+            "amp": {"mode": "none"},
+        })
+        model = build_model(config, sample.x_static.shape[-1], sample.force_hist.shape[-1], sample.state_hist.shape[-1])
+        initial_parameters = {name: parameter.detach().clone() for name, parameter in model.named_parameters()}
+        output_dir = self.root / "training"
+        trainer = Trainer(
+            model, loader, loader, loader, anuga, anuga, anuga, normalizer,
+            config, torch.device("cpu"), output_dir, logging.getLogger(__name__),
+        )
+        summary = trainer.fit()
+        self.assertEqual(summary["best_epoch"], 1)
+        self.assertTrue(np.isfinite(summary["best_metric"]))
+        self.assertTrue(np.isfinite(summary["test_rollout"]["whole_rollout_rmse"]))
+        self.assertTrue((output_dir / "best.pt").exists())
+        self.assertTrue((output_dir / "final_metrics.json").exists())
+        history = json.loads((output_dir / "history.json").read_text())
+        self.assertEqual(history[0]["train"]["train_horizon_max"], 1.0)
+        self.assertTrue(any(not torch.equal(initial_parameters[name], parameter) for name, parameter in model.named_parameters()))
 
     def test_training_horizon_truncation_keeps_future_fields_aligned(self) -> None:
         anuga = ANUGADataset([self.root / "sim_000_merged.npz"], history_len=3, future_len=2, split="train")
@@ -664,16 +639,7 @@ class SmokeTest(unittest.TestCase):
         self.assertEqual(int(timeseries["known_steps"][0]), 3)
         self.assertEqual(int(timeseries["rollout_num_steps"][0]), 3)
 
-    def test_rollout_uses_checkpoint_config_and_preserves_saved_split_order(self) -> None:
-        checkpoint_config = {
-            "dataset": {"name": "anuga", "history_len": 4, "future_len": 64},
-            "evaluation": {"full_rollout_known_steps": 8},
-        }
-        resolved_config, source = load_evaluation_config({"config": checkpoint_config}, config_paths=None)
-        self.assertEqual(source, "checkpoint")
-        self.assertEqual(resolved_config, checkpoint_config)
-        self.assertIsNot(resolved_config, checkpoint_config)
-
+    def test_rollout_preserves_saved_split_order(self) -> None:
         first = self.root / "sim_000_merged.npz"
         second = self.root / "sim_001_merged.npz"
         second.write_bytes(first.read_bytes())
@@ -691,13 +657,24 @@ class SmokeTest(unittest.TestCase):
         self.assertEqual(split_files["train"], [second, first])
         self.assertEqual(split_files["test"], [second, first])
 
-        model = torch.nn.Linear(2, 1)
-        saved_state = dict(model.state_dict())
-        saved_state["dynamics.control._t"] = torch.zeros(1)
-        skipped_keys = load_model_state_strict(model, saved_state)
-        self.assertEqual(skipped_keys, ["dynamics.control._t"])
+    def test_node2_checkpoint_roundtrip_after_forward(self) -> None:
+        anuga = ANUGADataset([self.root / "sim_000_merged.npz"], history_len=3, future_len=2, split="train")
+        sample = anuga[0]
+        config = _base_config()
+        dimensions = (sample.x_static.shape[-1], sample.force_hist.shape[-1], sample.state_hist.shape[-1])
+        model = build_model(config, *dimensions).eval()
+        with torch.no_grad():
+            expected = model(sample)
+        checkpoint_path = self.root / "model.pt"
+        torch.save({"config": config, "model_state": model.state_dict()}, checkpoint_path)
+        checkpoint = torch.load(checkpoint_path, map_location="cpu")
+        restored = build_model(checkpoint["config"], *dimensions).eval()
+        restored.load_state_dict(checkpoint["model_state"])
+        with torch.no_grad():
+            actual = restored(sample)
+        self.assertTrue(torch.equal(expected, actual))
         with self.assertRaises(RuntimeError):
-            load_model_state_strict(model, {"bias": model.bias.detach().clone()})
+            restored.load_state_dict({})
 
 
 if __name__ == "__main__":

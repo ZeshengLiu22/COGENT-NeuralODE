@@ -17,16 +17,12 @@ CHECKPOINT=""
 HISTORY_LEN=""
 KNOWN_STEPS=""
 PLOT_MAX_LEAD_STEP=""
-declare -a CONFIGS=()
 
 usage() {
   cat <<'EOF'
 Usage:
 	  bash eval_full_rollout_tmux.sh \
 	    --checkpoint outputs/<run_name>/best.pt \
-	    --config configs/ANUGA_History_Scan/base_ANUGA_history1.yaml \
-	    --config configs/anuga.yaml \
-	    --config configs/model_node1.yaml \
     [--split test] \
     [--device cuda] \
     [--history-len 8] \
@@ -37,7 +33,7 @@ Usage:
 
 Notes:
 	  - The wrapper starts a detached tmux session and writes a timestamped log under logs/.
-	  - Use configs/ANUGA_History_Scan/base_ANUGA_history<N>.yaml with configs/anuga.yaml, or configs/base_ISSM_history_N.yaml with configs/issm.yaml.
+  - Evaluation uses the config and split saved with the checkpoint.
 	  - `--gpu` sets CUDA_VISIBLE_DEVICES for the launched evaluation.
 	  - Use `tmux attach -t <session-name>` to watch the run.
 EOF
@@ -78,7 +74,6 @@ run_eval() {
     echo "[$(date -u +%F' '%T)] cuda_visible_devices=${CUDA_VISIBLE_DEVICES:-<unset>}"
     echo "[$(date -u +%F' '%T)] python_bin=$PYTHON_BIN"
     echo "[$(date -u +%F' '%T)] log_file=$LOG_FILE"
-    printf '[%s] configs=%s\n' "$(date -u +%F' '%T)" "${CONFIGS[*]}"
   } | tee -a "$LOG_FILE"
 
   if command -v nvidia-smi >/dev/null 2>&1; then
@@ -89,13 +84,7 @@ run_eval() {
 import os
 import sys
 
-import numpy
-import scipy
 import torch
-import torch_geometric
-import torchcde
-import torchdiffeq
-import yaml
 
 print("python:", sys.executable)
 print("torch:", torch.__version__)
@@ -118,10 +107,6 @@ PY
   if [[ -n "$PLOT_MAX_LEAD_STEP" ]]; then
     cmd+=("--plot-max-lead-step" "$PLOT_MAX_LEAD_STEP")
   fi
-  local config_path
-  for config_path in "${CONFIGS[@]}"; do
-    cmd+=("--config" "$config_path")
-  done
   "${cmd[@]}" 2>&1 | tee -a "$LOG_FILE"
 }
 
@@ -129,10 +114,6 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --checkpoint)
       CHECKPOINT="$2"
-      shift 2
-      ;;
-    --config)
-      CONFIGS+=("$2")
       shift 2
       ;;
     --split)
@@ -185,28 +166,10 @@ if [[ -z "$CHECKPOINT" ]]; then
   exit 1
 fi
 
-if [[ ${#CONFIGS[@]} -eq 0 ]]; then
-  echo "At least one --config is required." >&2
-  usage >&2
-  exit 1
-fi
-
-if [[ "$SPLIT" != "train" && "$SPLIT" != "val" && "$SPLIT" != "test" ]]; then
-  echo "--split must be one of: train, val, test." >&2
-  exit 1
-fi
-
 if [[ ! -f "$CHECKPOINT" ]]; then
   echo "Checkpoint not found: $CHECKPOINT" >&2
   exit 1
 fi
-
-for config_path in "${CONFIGS[@]}"; do
-  if [[ ! -f "$config_path" ]]; then
-    echo "Config not found: $config_path" >&2
-    exit 1
-  fi
-done
 
 SESSION_NAME="${SESSION_NAME:-$(default_session_name)}"
 SESSION_NAME="$(sanitize_session_name "$SESSION_NAME")"
@@ -220,16 +183,6 @@ fi
 if ! command -v tmux >/dev/null 2>&1; then
   echo "tmux is not installed or not on PATH." >&2
   exit 1
-fi
-
-"$PYTHON_BIN" -c "import torch, torch_geometric, torchdiffeq, torchcde, yaml, numpy, scipy" >/dev/null
-
-if [[ "$DEVICE" == cuda* ]]; then
-  if [[ -n "$GPU" ]]; then
-    CUDA_VISIBLE_DEVICES="$GPU" "$PYTHON_BIN" -c "import torch; assert torch.cuda.is_available(), 'CUDA is not available for the requested full-rollout evaluation.'" >/dev/null
-  else
-    "$PYTHON_BIN" -c "import torch; assert torch.cuda.is_available(), 'CUDA is not available for the requested full-rollout evaluation.'" >/dev/null
-  fi
 fi
 
 if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
@@ -255,9 +208,6 @@ fi
 if [[ -n "$PLOT_MAX_LEAD_STEP" ]]; then
   printf -v TMUX_CMD "%s --plot-max-lead-step %q" "$TMUX_CMD" "$PLOT_MAX_LEAD_STEP"
 fi
-for config_path in "${CONFIGS[@]}"; do
-  printf -v TMUX_CMD "%s --config %q" "$TMUX_CMD" "$config_path"
-done
 
 tmux new-session -d -s "$SESSION_NAME" "$TMUX_CMD"
 

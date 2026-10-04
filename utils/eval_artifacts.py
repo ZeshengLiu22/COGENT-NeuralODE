@@ -16,7 +16,6 @@ from .io import save_json
 def infer_state_channel_names(dataset_name: str, state_dim: int) -> list[str]:
     """Return human-readable state-channel names when the dataset has known semantics."""
 
-    dataset_name = str(dataset_name).lower()
     if dataset_name == "anuga" and state_dim == 3:
         return ["depth", "xmomentum", "ymomentum"]
     if dataset_name == "adcirc" and state_dim == 1:

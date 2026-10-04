@@ -13,22 +13,12 @@ ensure_project_root_on_path()
 
 import torch
 from torch.nn.parallel import DistributedDataParallel as DDP
-from torch.utils.data.distributed import DistributedSampler
-from torch_geometric.loader import DataLoader
 
-from datasets import ADCIRCDataset, ANUGADataset, ISSMDataset
+from datasets.factory import build_dataset, build_loader, build_splits
 from datasets.normalization import FeatureNormalizer
-from datasets.split_utils import discover_files, issm_rate_modulo_split, random_split
 from models import build_model
 from training import Trainer
 from utils import cleanup_distributed, configure_logging, ensure_dir, load_config_bundle, save_json, seed_everything, setup_distributed
-
-
-DATASET_REGISTRY = {
-    "anuga": ANUGADataset,
-    "adcirc": ADCIRCDataset,
-    "issm": ISSMDataset,
-}
 
 
 def parse_args() -> argparse.Namespace:
@@ -47,86 +37,7 @@ def parse_args() -> argparse.Namespace:
 def apply_cli_overrides(config: dict, args: argparse.Namespace) -> None:
     if args.horizon_curriculum is None:
         return
-    training_cfg = config.setdefault("training", {})
-    raw_cfg = training_cfg.get("train_horizon_curriculum", {})
-    if isinstance(raw_cfg, dict):
-        curriculum_cfg = dict(raw_cfg)
-    else:
-        curriculum_cfg = {"enabled": bool(raw_cfg)}
-    curriculum_cfg["enabled"] = args.horizon_curriculum == "on"
-    training_cfg["train_horizon_curriculum"] = curriculum_cfg
-
-
-def build_splits(config: dict) -> tuple[list[Path], list[Path], list[Path]]:
-    dataset_cfg = config["dataset"]
-    split_cfg = dataset_cfg["split"]
-    files = discover_files(dataset_cfg["data_dir"], dataset_cfg["file_patterns"])
-
-    strategy = str(split_cfg.get("strategy", "random")).lower()
-    if strategy == "random":
-        return random_split(
-            files,
-            train=float(split_cfg["train"]),
-            val=float(split_cfg["val"]),
-            test=float(split_cfg["test"]),
-            seed=int(split_cfg.get("seed", config["seed"])),
-        )
-    if strategy == "issm_rate_modulo":
-        return issm_rate_modulo_split(
-            files,
-            modulo=int(split_cfg.get("modulo", 20)),
-            val_remainder=int(split_cfg.get("val_remainder", 0)),
-            test_remainder=int(split_cfg.get("test_remainder", 10)),
-        )
-    raise ValueError(f"Unknown split strategy: {strategy}")
-
-
-def build_dataset(dataset_name: str, files: list[Path], split: str, config: dict, normalizer=None):
-    dataset_cls = DATASET_REGISTRY[dataset_name]
-    dataset_cfg = config["dataset"]
-    sampling_cfg = dataset_cfg.get("sampled_windows", {})
-    return dataset_cls(
-        scenario_files=files,
-        history_len=int(dataset_cfg["history_len"]),
-        future_len=int(dataset_cfg["future_len"]),
-        split=split,
-        stride=int(dataset_cfg.get("stride", 1)),
-        normalizer=normalizer,
-        cache_in_memory=bool(dataset_cfg.get("cache_in_memory", False)),
-        epoch_num_windows=sampling_cfg.get("epoch_num_windows"),
-        windows_per_scenario=sampling_cfg.get("windows_per_scenario"),
-        seed=int(dataset_cfg.get("seed", config["seed"])),
-        adapter_kwargs=dataset_cfg.get(dataset_name, {}),
-    )
-
-
-def build_loader(
-    dataset,
-    batch_size: int,
-    num_workers: int,
-    distributed: bool,
-    shuffle: bool,
-    pin_memory: bool = False,
-    prefetch_factor: int | None = None,
-    persistent_workers: bool = False,
-):
-    sampler = None
-    if distributed:
-        sampler = DistributedSampler(dataset, shuffle=shuffle)
-        shuffle = False
-    loader_kwargs = {
-        "batch_size": batch_size,
-        "shuffle": shuffle,
-        "sampler": sampler,
-        "num_workers": num_workers,
-        "pin_memory": pin_memory,
-    }
-    if num_workers > 0:
-        if prefetch_factor is not None:
-            loader_kwargs["prefetch_factor"] = prefetch_factor
-        loader_kwargs["persistent_workers"] = persistent_workers
-    loader = DataLoader(dataset, **loader_kwargs)
-    return loader
+    config["training"].setdefault("train_horizon_curriculum", {})["enabled"] = args.horizon_curriculum == "on"
 
 
 def main() -> None:
@@ -138,8 +49,8 @@ def main() -> None:
     device = torch.device("cuda", ddp_info["local_rank"]) if torch.cuda.is_available() else torch.device("cpu")
     seed_everything(int(config["seed"]) + rank, deterministic=bool(config.get("deterministic", False)))
 
-    dataset_name = str(config["dataset"]["name"]).lower()
-    run_name = args.run_name or f"{dataset_name}_{config['model']['name']}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
+    dataset_name = config["dataset"]["name"]
+    run_name = args.run_name or f"{dataset_name}_node2_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
     output_dir = ensure_dir(Path(config.get("output_dir", "outputs")) / run_name)
     logger = configure_logging(output_dir / "train.log" if rank == 0 else None)
     if rank == 0:
@@ -149,7 +60,7 @@ def main() -> None:
     if rank == 0:
         save_json(output_dir / "split_files.json", {"train": [str(p) for p in train_files], "val": [str(p) for p in val_files], "test": [str(p) for p in test_files]})
 
-    train_dataset = build_dataset(dataset_name, train_files, split="train", config=config, normalizer=None)
+    train_dataset = build_dataset(dataset_name, train_files, split="train", config=config, normalizer=None, sample_windows=True)
     normalizer = FeatureNormalizer.fit_from_trajectories(train_dataset.iter_trajectories(), std_floor=float(config["normalization"]["std_floor"]))
     train_dataset.normalizer = normalizer
     val_dataset = build_dataset(dataset_name, val_files, split="val", config=config, normalizer=normalizer)

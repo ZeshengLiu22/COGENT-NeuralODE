@@ -23,10 +23,7 @@ def load_yaml(path: str | Path) -> dict[str, Any]:
     """Load a YAML file into a plain dictionary."""
 
     with Path(path).open("r", encoding="utf-8") as handle:
-        data = yaml.safe_load(handle) or {}
-    if not isinstance(data, dict):
-        raise TypeError(f"Expected mapping at {path}, got {type(data)!r}")
-    return data
+        return yaml.safe_load(handle)
 
 
 def deep_update(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:

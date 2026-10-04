@@ -2,23 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Sequence
-
 import torch
-
-
-def assert_rank(tensor: torch.Tensor, rank: int, name: str) -> None:
-    """Validate a tensor rank."""
-
-    if tensor.dim() != rank:
-        raise ValueError(f"{name} must have rank {rank}, got shape {tuple(tensor.shape)}")
-
-
-def assert_last_dim(tensor: torch.Tensor, size: int, name: str) -> None:
-    """Validate the last dimension of a tensor."""
-
-    if tensor.shape[-1] != size:
-        raise ValueError(f"{name} last dimension must be {size}, got shape {tuple(tensor.shape)}")
 
 
 def ensure_shared_time_grid(t_future: torch.Tensor) -> torch.Tensor:
@@ -36,9 +20,3 @@ def ensure_shared_time_grid(t_future: torch.Tensor) -> torch.Tensor:
             "continuous solver path. Use batch_size=1 or align rollout times."
         )
     return ref
-
-
-def format_shape(shape: Sequence[int]) -> str:
-    """Return a compact shape string for error messages."""
-
-    return "x".join(str(dim) for dim in shape)

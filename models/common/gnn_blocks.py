@@ -9,17 +9,6 @@ from torch_geometric.nn import GCNConv, GraphConv, SAGEConv
 from .mlp import get_activation
 
 
-def _build_conv(layer_type: str, in_dim: int, out_dim: int):
-    layer_type = layer_type.lower()
-    if layer_type == "sage":
-        return SAGEConv(in_dim, out_dim)
-    if layer_type == "gcn":
-        return GCNConv(in_dim, out_dim)
-    if layer_type == "graphconv":
-        return GraphConv(in_dim, out_dim)
-    raise ValueError(f"Unsupported GNN layer type: {layer_type}")
-
-
 class GraphNetwork(nn.Module):
     """Stack of message-passing layers with configurable hidden size."""
 
@@ -34,18 +23,10 @@ class GraphNetwork(nn.Module):
         dropout: float = 0.0,
     ) -> None:
         super().__init__()
-        if num_layers < 1:
-            raise ValueError("num_layers must be >= 1")
-
-        dims = [input_dim]
-        if num_layers == 1:
-            dims.append(output_dim)
-        else:
-            dims.extend([hidden_dim] * (num_layers - 1))
-            dims.append(output_dim)
-
+        dims = [input_dim, *([hidden_dim] * (num_layers - 1)), output_dim]
+        conv_cls = {"sage": SAGEConv, "gcn": GCNConv, "graphconv": GraphConv}[layer_type]
         self.convs = nn.ModuleList(
-            _build_conv(layer_type, dims[index], dims[index + 1]) for index in range(len(dims) - 1)
+            conv_cls(dims[index], dims[index + 1]) for index in range(num_layers)
         )
         self.activation = get_activation(activation)
         self.dropout = nn.Dropout(dropout) if dropout > 0.0 else None

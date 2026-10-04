@@ -12,7 +12,6 @@ HISTORY_LEN="${HISTORY_LEN:-1}"
 KNOWN_STEPS="${KNOWN_STEPS:-1}"
 PLOT_MAX_LEAD_STEP="${PLOT_MAX_LEAD_STEP:-60}"
 LOG_DIR="${LOG_DIR:-$PROJECT_ROOT/logs}"
-BASE_CONFIG="${BASE_CONFIG:-configs/ANUGA_History_Scan/base_ANUGA_history1.yaml}"
 STAMP="${STAMP:-$(date -u +%Y%m%d_%H%M%S)}"
 SESSION_NAME="${SESSION_NAME:-anuga_ablation_rollouts_${STAMP}}"
 LOG_FILE="${LOG_FILE:-$LOG_DIR/${SESSION_NAME}.log}"
@@ -22,7 +21,6 @@ DRY_RUN=0
 ABLATION_NAMES=(
   full_upgrade
   upgrade_off
-  transformer_history_only
   residual_only
   relative_time_only
   history_in_ode_only
@@ -31,19 +29,9 @@ ABLATION_NAMES=(
 declare -A RUN_PREFIXES=(
   [full_upgrade]="anuga_node2_full_upgrade"
   [upgrade_off]="anuga_node2_upgrade_off"
-  [transformer_history_only]="anuga_node2_transformer_history_only"
   [residual_only]="anuga_node2_residual_only"
   [relative_time_only]="anuga_node2_relative_time_only"
   [history_in_ode_only]="anuga_node2_history_in_ode_only"
-)
-
-declare -A EXTRA_CONFIGS=(
-  [full_upgrade]=""
-  [upgrade_off]="configs/NODE2_Upgrade1_Ablation/model_node2_upgrade_off.yaml"
-  [transformer_history_only]="configs/NODE2_Upgrade1_Ablation/model_node2_transformer_history_only.yaml"
-  [residual_only]="configs/NODE2_Upgrade1_Ablation/model_node2_residual_only.yaml"
-  [relative_time_only]="configs/NODE2_Upgrade1_Ablation/model_node2_relative_time_only.yaml"
-  [history_in_ode_only]="configs/NODE2_Upgrade1_Ablation/model_node2_history_in_ode_only.yaml"
 )
 
 usage() {
@@ -51,7 +39,7 @@ usage() {
 Usage:
   bash eval_anuga_ablation_rollouts.sh [options]
 
-Runs the six ANUGA NODE2 ablation checkpoints sequentially in one tmux session.
+Runs the five ANUGA NODE2 ablation checkpoints sequentially in one tmux session.
 By default each checkpoint is the latest matching:
   outputs/anuga_node2_<ablation>_*/best.pt
 
@@ -68,7 +56,7 @@ Options:
 
 Environment overrides:
 	  PYTHON_BIN, SPLIT, DEVICE, GPU, HISTORY_LEN, KNOWN_STEPS,
-	  PLOT_MAX_LEAD_STEP, LOG_DIR, BASE_CONFIG, SESSION_NAME, LOG_FILE
+	  PLOT_MAX_LEAD_STEP, LOG_DIR, SESSION_NAME, LOG_FILE
 EOF
 }
 
@@ -91,21 +79,9 @@ latest_checkpoint_for() {
   printf '%s\n' "$latest"
 }
 
-append_config_args() {
-  local -n out_args="$1"
-  local extra_config="$2"
-  out_args+=(--config "$BASE_CONFIG")
-  out_args+=(--config configs/anuga.yaml)
-  out_args+=(--config configs/model_node2.yaml)
-  if [[ -n "$extra_config" ]]; then
-    out_args+=(--config "$extra_config")
-  fi
-}
-
 run_one_rollout() {
   local ablation_name="$1"
   local checkpoint="$2"
-  local extra_config="${EXTRA_CONFIGS[$ablation_name]}"
   local run_name
   run_name="$(basename "$(dirname "$checkpoint")")"
   local run_log="$LOG_DIR/${run_name}.full_rollout_${SPLIT}_${STAMP}.log"
@@ -118,7 +94,6 @@ run_one_rollout() {
     --known-steps "$KNOWN_STEPS"
     --plot-max-lead-step "$PLOT_MAX_LEAD_STEP"
   )
-  append_config_args cmd "$extra_config"
 
   if [[ "$DRY_RUN" -eq 1 ]]; then
     echo
@@ -164,7 +139,6 @@ run_all_rollouts() {
     echo "[$(date -u +%F' '%T)] cuda_visible_devices=${CUDA_VISIBLE_DEVICES:-<unset>}"
     echo "[$(date -u +%F' '%T)] python_bin=$PYTHON_BIN"
     echo "[$(date -u +%F' '%T)] log_file=$LOG_FILE"
-    echo "[$(date -u +%F' '%T)] base_config=$BASE_CONFIG"
   else
   {
     echo "[$(date -u +%F' '%T)] project_root=$PROJECT_ROOT"
@@ -177,10 +151,9 @@ run_all_rollouts() {
     echo "[$(date -u +%F' '%T)] cuda_visible_devices=${CUDA_VISIBLE_DEVICES:-<unset>}"
     echo "[$(date -u +%F' '%T)] python_bin=$PYTHON_BIN"
 	    echo "[$(date -u +%F' '%T)] log_file=$LOG_FILE"
-	    echo "[$(date -u +%F' '%T)] base_config=$BASE_CONFIG"
   } | tee -a "$LOG_FILE"
 
-  "$PYTHON_BIN" -c "import sys; import torch, torch_geometric, torchdiffeq, torchcde, yaml, numpy, scipy; print('python:', sys.executable); print('torch:', torch.__version__); print('cuda:', torch.cuda.is_available())" 2>&1 | tee -a "$LOG_FILE"
+  "$PYTHON_BIN" -c "import sys; import torch; print('python:', sys.executable); print('torch:', torch.__version__); print('cuda:', torch.cuda.is_available())" 2>&1 | tee -a "$LOG_FILE"
   fi
 
   local ablation_name
@@ -250,18 +223,6 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ "$SPLIT" != "train" && "$SPLIT" != "val" && "$SPLIT" != "test" ]]; then
-  echo "--split must be one of: train, val, test." >&2
-  exit 1
-fi
-
-for config_path in "$BASE_CONFIG" configs/anuga.yaml configs/model_node2.yaml "${EXTRA_CONFIGS[@]}"; do
-  if [[ -n "$config_path" && ! -f "$config_path" ]]; then
-    echo "Config not found: $config_path" >&2
-    exit 1
-  fi
-done
-
 SESSION_NAME="$(sanitize_session_name "$SESSION_NAME")"
 LOG_FILE="${LOG_FILE:-$LOG_DIR/${SESSION_NAME}.log}"
 
@@ -288,7 +249,7 @@ if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
   exit 1
 fi
 
-export PYTHON_BIN SPLIT DEVICE GPU HISTORY_LEN KNOWN_STEPS PLOT_MAX_LEAD_STEP LOG_DIR BASE_CONFIG SESSION_NAME LOG_FILE STAMP
+export PYTHON_BIN SPLIT DEVICE GPU HISTORY_LEN KNOWN_STEPS PLOT_MAX_LEAD_STEP LOG_DIR SESSION_NAME LOG_FILE STAMP
 tmux new-session -d -s "$SESSION_NAME" "cd '$PROJECT_ROOT' && bash '$PROJECT_ROOT/eval_anuga_ablation_rollouts.sh' --inside-tmux"
 
 echo "Started tmux session: $SESSION_NAME"
