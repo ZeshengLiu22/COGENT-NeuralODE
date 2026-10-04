@@ -75,6 +75,9 @@ Every launcher prints the complete stack including `protocol_config`.
 Every training run saves authoritative ordered `config_stack.txt` beside
 merged `config.json`. `runtime/fast.yaml` controls DataLoader performance and
 does not enable full in-memory caching; the shared default is false.
+All formal launchers use `runtime/issm_fast.yaml` or `runtime/anuga_fast.yaml`
+to explicitly enable trajectory caching with the same loader settings,
+avoiding repeated MAT/NPZ reads and preprocessing for each training series.
 
 ## The four formal phases
 
@@ -129,8 +132,8 @@ Submit each desired experiment's file individually. The shell defaults use
 four processes and permit `PROJECT_ROOT`, `PYTHON_BIN`, and `NPROC` overrides.
 Formal Slurm files preserve the established H100 resources, four ranks,
 24 CPUs per task, nine-hour ISSM/six-hour ANUGA walltime, and cluster Python
-environment. ANUGA preserves its specified allocation; ISSM retains the
-existing default-allocation behavior. Inspect the complete file for site details.
+environment. Both datasets explicitly charge allocation `TG-CIS250588`.
+Inspect the complete file for site details.
 
 Slurm files set the known absolute repository root and `--chdir` explicitly.
 They do not infer paths from the submitted script's location or rely on sibling
@@ -169,7 +172,7 @@ python scripts/train.py \
   --config configs/ablations/issm/training_horizon/k180.yaml \
   --config configs/ablations/issm/rollout_start/known60.yaml \
   --config configs/ablations/issm/temporal_consistency/tc0.yaml \
-  --config configs/runtime/fast.yaml \
+  --config configs/runtime/issm_fast.yaml \
   --run-name issm_h1_example
 ```
 
@@ -248,7 +251,7 @@ python scripts/audit_relative_time.py --data-root data --output docs/final_clean
 ```
 
 Syntax-check active shell/Slurm files and exclude historical directories
-`legacy-scripts/`, `old-files/`, and `legacy-v2/` from active stale-reference
+`legacy-scripts/` and `old-files/` from active stale-reference
 audits. [Current validation evidence](docs/final_cleanup_validation/results.json)
 records completed checks; older `docs/refactor_validation/` is a historical
 snapshot of the earlier refactor.

@@ -1,5 +1,5 @@
 Passed: 158 active shell/Slurm files
-Historical exclusions: legacy-scripts/, old-files/, legacy-v2/
+Historical exclusions: legacy-scripts/, old-files/
 eval_rollout_start_sweep.sh
 eval_rollout_tmux.sh
 launchers/shell/anuga/01_history/h1.sh

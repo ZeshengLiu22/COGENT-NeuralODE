@@ -18,7 +18,7 @@ Filenames do not select behavior.
 | `configs/ablations/<dataset>/training_horizon/kN.yaml` | Maximum training future K |
 | `configs/ablations/<dataset>/rollout_start/knownN.yaml` | Evaluation start S |
 | `configs/ablations/<dataset>/temporal_consistency/tcN.yaml` | TC0–TC5 |
-| `configs/runtime/fast.yaml` | Workers, pinned memory, prefetching, persistent-worker request |
+| `configs/runtime/{issm,anuga}_fast.yaml` | Formal dataset-specific trajectory cache opt-in, workers, pinned memory, prefetching, persistent-worker request |
 
 Each formal stack includes control overlays even when they match protocol
 defaults. Dataset-scoped ISSM and ANUGA files are intentionally explicit and
@@ -26,6 +26,9 @@ duplicated. No shared architecture/TC tree hides formal provenance.
 
 The safe shared loader default is `dataset.cache_in_memory: false`.
 `runtime/fast.yaml` does not override it and contains no scientific settings.
+Formal ISSM/ANUGA launchers instead select `runtime/issm_fast.yaml` or
+`runtime/anuga_fast.yaml`, which retain the same loader settings and explicitly
+set `cache_in_memory: true` to reuse full trajectories across series and epochs.
 Epoch resampling requires workers to see current series indices, so training
 disables persistent workers when needed despite the runtime request.
 

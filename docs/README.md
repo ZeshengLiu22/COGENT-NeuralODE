@@ -17,13 +17,15 @@ H is history length, K is maximum training future, and S is rollout start.
 B fixes each simulation's epoch series count; k_eff remains independently
 sampled. Only selected H* propagates from Phase 1 into Phases 2–4.
 
-`old-files/`, `legacy-scripts/`, and `legacy-v2/` are historical only.
+`old-files/` and `legacy-scripts/` are historical only.
 Their configurations, launcher paths, and deferred-model designs are not
 active instructions. Historical launch scripts are retained for provenance/
 reference only; do not use them for new formal experiments.
 
 [Current cleanup validation](final_cleanup_validation/results.json) records the
-completed checks and current CUDA smoke status.
+completed checks and current CUDA smoke status. Its `runtime_cache_fix_validation`
+section records the CPU/configuration/launcher recheck after the runtime and
+account fixes; earlier audit entries retain their original scope.
 
 Validation logs and JSON evidence are records of the exact run that generated
 them. Files under `refactor_validation/` record the earlier rollout-only

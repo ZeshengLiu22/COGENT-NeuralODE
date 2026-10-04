@@ -50,7 +50,7 @@ def _config_stack(name: str, overlays: tuple[str, ...] = ()) -> list[str]:
         selected.get("training_horizon", f"{prefix}/training_horizon/k{future}.yaml"),
         selected.get("rollout_start", f"{prefix}/rollout_start/known{known}.yaml"),
         selected.get("temporal_consistency", f"{prefix}/temporal_consistency/tc0.yaml"),
-        "configs/runtime/fast.yaml",
+        f"configs/runtime/{name}_fast.yaml",
     ]
 
 

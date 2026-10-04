@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #SBATCH -J issm_02_a10_lstm_reson_ctxon_timeoff
 #SBATCH -p h100
-##SBATCH -A TG-CIS250588
+#SBATCH -A TG-CIS250588
 #SBATCH -N 1
 #SBATCH --ntasks-per-node=4
 #SBATCH --cpus-per-task=24
@@ -12,7 +12,7 @@
 #SBATCH -e /home1/09575/zeshengliu/scratch/COGENT-NeuralODE/logs/slurm_%x_%j.err
 
 # The h100 queue allocates the four-GPU node; torchrun starts four ranks.
-# Account directive retains the original ISSM cluster setting (inactive).
+# Use the same explicit allocation as ANUGA and the CUDA smoke scripts.
 # ISSM phase 02: a10_lstm_reson_ctxon_timeoff; H=selected after Phase 1, K=180, S=60.
 # Architecture: lstm, residual ON, ODE history ON, relative time OFF.
 # TC0; fixed training series/scenario/epoch = 60.
@@ -44,7 +44,7 @@ ARCHITECTURE_CONFIG="configs/ablations/issm/architecture/a10_lstm_reson_ctxon_ti
 TRAINING_HORIZON_CONFIG="configs/ablations/issm/training_horizon/k180.yaml"
 ROLLOUT_START_CONFIG="configs/ablations/issm/rollout_start/known60.yaml"
 TEMPORAL_CONSISTENCY_CONFIG="configs/ablations/issm/temporal_consistency/tc0.yaml"
-RUNTIME_CONFIG="configs/runtime/fast.yaml"
+RUNTIME_CONFIG="configs/runtime/issm_fast.yaml"
 RUN_STAMP="${RUN_STAMP:-$(date -u +%Y%m%d_%H%M%S)}"
 RUN_NAME="issm_02_architecture_${HISTORY_TAG}_k180_a10_lstm_reson_ctxon_timeoff_tc0_${RUN_STAMP}"
 OUTPUT_DIR="$PROJECT_ROOT/outputs/$RUN_NAME"

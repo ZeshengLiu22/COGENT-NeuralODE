@@ -17,7 +17,7 @@ HORIZONS = {'issm': (30, 45, 60, 75, 90, 120, 150, 180),
 def canonical(dataset='issm', *overlays):
     return load_config_bundle([ROOT / 'configs' / path for path in (
         'default.yaml', f'datasets/{dataset}.yaml', f'protocols/{dataset}/main.yaml',
-        'models/node2.yaml', *overlays, 'runtime/fast.yaml')])
+        'models/node2.yaml', *overlays, f'runtime/{dataset}_fast.yaml')])
 
 
 class ConfigTest(unittest.TestCase):
@@ -120,7 +120,13 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual(set(cfg['dataset']), {'num_workers', 'pin_memory', 'prefetch_factor', 'persistent_workers'})
         self.assertFalse(load_yaml(ROOT / 'configs/default.yaml')['dataset']['cache_in_memory'])
         for dataset in ('issm', 'anuga'):
-            self.assertFalse(canonical(dataset)['dataset']['cache_in_memory'])
+            generic = load_config_bundle([ROOT / 'configs' / path for path in (
+                'default.yaml', f'datasets/{dataset}.yaml', f'protocols/{dataset}/main.yaml',
+                'runtime/fast.yaml')])
+            self.assertFalse(generic['dataset']['cache_in_memory'])
+            formal = load_yaml(ROOT / f'configs/runtime/{dataset}_fast.yaml')
+            self.assertEqual(formal, deep_update(cfg, {'dataset': {'cache_in_memory': True}}))
+            self.assertTrue(canonical(dataset)['dataset']['cache_in_memory'])
 
     def test_layer_ownership_and_dataset_separation(self):
         defaults = load_yaml(ROOT / 'configs/default.yaml')

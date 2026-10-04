@@ -106,7 +106,7 @@ class LauncherTest(unittest.TestCase):
                     f'configs/protocols/{dataset}/main.yaml', 'configs/models/node2.yaml',
                     f'{prefix}/history/h{h}.yaml', f'{prefix}/architecture/{architecture}.yaml',
                     f'{prefix}/training_horizon/k{k}.yaml', f'{prefix}/rollout_start/known{start}.yaml',
-                    f'{prefix}/temporal_consistency/{tc}.yaml', 'configs/runtime/fast.yaml']
+                    f'{prefix}/temporal_consistency/{tc}.yaml', f'configs/runtime/{dataset}_fast.yaml']
                 self.assertEqual(self.configs(call), expected)
                 cfg = load_config_bundle([self.root / item for item in expected])
                 self.assertEqual(cfg['dataset']['history_len'], h)
@@ -114,7 +114,7 @@ class LauncherTest(unittest.TestCase):
                 self.assertEqual(cfg['evaluation']['known_steps'], start)
                 self.assertEqual(cfg['dataset']['train_series_per_scenario_per_epoch'], 60 if dataset == 'issm' else 9)
                 self.assertEqual(cfg['model']['relative_time_scale'], 180. if dataset == 'issm' else 65.)
-                self.assertFalse(cfg['dataset']['cache_in_memory'])
+                self.assertTrue(cfg['dataset']['cache_in_memory'])
                 if phase != '02_architecture':
                     self.assertEqual(cfg['model']['history_encoder']['history_encoder_type'], 'transformer')
                     self.assertTrue(all(cfg['model'][key] for key in (
@@ -156,11 +156,10 @@ class LauncherTest(unittest.TestCase):
                     self.assertIn('#SBATCH --cpus-per-task=24', source)
                     self.assertIn('#SBATCH -p h100', source)
                     self.assertIn('NPROC=4', source)
+                    self.assertIn('\n#SBATCH -A TG-CIS250588\n', source)
                     if 'anuga' in path.parts:
-                        self.assertIn('\n#SBATCH -A TG-CIS250588\n', source)
                         self.assertIn('/work2/09575/', source)
                     else:
-                        self.assertIn('\n##SBATCH -A TG-CIS250588\n', source)
                         self.assertIn('/work/09575/', source)
 
     def test_active_shell_syntax(self):

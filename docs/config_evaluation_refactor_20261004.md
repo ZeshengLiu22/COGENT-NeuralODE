@@ -26,8 +26,8 @@ The implementation/documentation review covered these milestones:
 Historical explanations were checked against current adapters, normalizer,
 encoders, ODE, trainer, losses, evaluator, and artifact code. Archived concepts
 are not restored as runtime behavior. The active technical documents are in
-[the docs index](README.md); historical material under `old-files/`,
-`legacy-scripts/`, and `legacy-v2/` is provenance only.
+[the docs index](README.md); historical material under `old-files/` and
+`legacy-scripts/` is provenance only.
 
 ## Fixed exposure with natural anchors and variable horizons
 
@@ -94,7 +94,9 @@ Scientific overlays live in separate `configs/ablations/issm/` and
 rollout_start, and temporal_consistency directories. Each architecture file
 explicitly sets encoder, residual, ODE context, and relative time. `full.yaml`
 matches a01; a01–a16 cover every four-factor combination. TC overlays are
-`tc0.yaml` through `tc5.yaml`. Runtime fast loading does not enable in-memory cache.
+`tc0.yaml` through `tc5.yaml`. The generic `runtime/fast.yaml` keeps caching off;
+formal launchers use `runtime/issm_fast.yaml` or `runtime/anuga_fast.yaml` to
+explicitly enable full-trajectory caching for these datasets.
 
 | Phase | H | Architecture | K | S | TC |
 | --- | --- | --- | --- | --- | --- |

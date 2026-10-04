@@ -72,14 +72,13 @@
   },
   "historical_exclusions": [
     "legacy-scripts/",
-    "old-files/",
-    "legacy-v2/"
+    "old-files/"
   ],
   "historical_launcher_preservation": {
     "original_directory_files": 60,
     "result": "byte-for-byte equal to base commit"
   },
-  "preexisting_changes": "Preexisting deletions under old-files/ and legacy-v2/ were left untouched.",
+  "preexisting_changes": "Preexisting historical-file deletions were left untouched in the original cleanup.",
   "cuda_smoke": {
     "status": "not_run",
     "reason": "TACC rejects sbatch from the current compute node. Public SSH login timed out; internal login1 requires interactive keyboard authentication. No GPU jobs were submitted. User was asked to submit from an authenticated login terminal and provide job IDs.",
@@ -123,8 +122,7 @@
     "active_hits": 0,
     "historical_exclusions": [
       "legacy-scripts/",
-      "old-files/",
-      "legacy-v2/"
+      "old-files/"
     ],
     "scope": "Runtime source, configs, active scripts, current documentation and loader experiments; retirement assertions and historical run artifacts are not active usage."
   },
@@ -132,5 +130,45 @@
     "result": "passed",
     "relative_markdown_links": "all resolve",
     "independent_formula_review": "sampler, architecture, curriculum and TC checked against current code"
+  },
+  "updated_utc": "2026-10-04T18:59:32.650031+00:00",
+  "validation_note": "Original cleanup checks retain their original scope and logs. The runtime_cache_fix_validation section records the follow-up checks on the runtime/cache/account/documentation fix.",
+  "runtime_cache_fix_validation": {
+    "generated_utc": "2026-10-04T18:59:32.650031+00:00",
+    "base_commit": "b3d5e2688cb68d06bb95cc1d83b69ac4cd4236ca",
+    "revision_scope": "Follow-up working tree; fixes and validation evidence are committed together.",
+    "execution_device": "cpu",
+    "unit_suite": {
+      "command": "CUDA_VISIBLE_DEVICES= OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 PYTHONDONTWRITEBYTECODE=1 /work/09575/zeshengliu/conda_envs/torchpyg-cu128-cge/bin/python -m unittest discover -s tests -v",
+      "tests": 133,
+      "result": "passed",
+      "seconds": 34.525,
+      "wall_seconds_including_imports": 123.012,
+      "log": "runtime_fix_cpu_tests.txt"
+    },
+    "launcher_validation": {
+      "formal_scripts": 152,
+      "active_shell_scripts": 158,
+      "result": "passed",
+      "coverage": "All formal commands resolve dataset-specific cache opt-in runtimes; generic fast remains uncached. Copied Slurm scripts, selected-history fail-fast behavior, explicit account and shell syntax checked by the unit suite.",
+      "slurm_account": "TG-CIS250588"
+    },
+    "documentation_cleanup": {
+      "current_documentation_and_validation_files_checked": 10,
+      "removed_archive_reference_hits": 0,
+      "historical_exclusions": [
+        "legacy-scripts/",
+        "old-files/"
+      ]
+    },
+    "changed_python_syntax": {
+      "files": 4,
+      "result": "passed"
+    },
+    "cuda_smoke": {
+      "status": "not_run",
+      "reason": "Excluded from this follow-up at user request."
+    },
+    "scope": "CPU unit, configuration and launcher checks only; original distributed and real-data audit records above were not rerun."
   }
 }

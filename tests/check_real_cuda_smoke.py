@@ -72,7 +72,7 @@ def main():
         f'{ablations}/history/h1.yaml', f'{ablations}/architecture/full.yaml',
         f'{ablations}/training_horizon/k{future}.yaml',
         f'{ablations}/rollout_start/known{known}.yaml',
-        f'{ablations}/temporal_consistency/tc0.yaml', 'configs/runtime/fast.yaml',
+        f'{ablations}/temporal_consistency/tc0.yaml', f'configs/runtime/{name}_fast.yaml',
     ]
     config = load_config_bundle([PROJECT_ROOT / path for path in stack])
     config['training']['epochs'] = 1

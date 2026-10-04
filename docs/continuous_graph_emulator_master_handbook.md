@@ -278,8 +278,10 @@ does not mix simulations. History encoding preserves node identity and
 processes only the H positions for each node.
 
 The generic fast runtime selects workers, pinned memory, and prefetching;
-`cache_in_memory` remains false. Training resampling requires worker copies to
-receive the updated series list each epoch, so the loader disables persistent
+`cache_in_memory` remains false. Formal ISSM/ANUGA launchers explicitly select
+`runtime/issm_fast.yaml` or `runtime/anuga_fast.yaml` to cache full trajectories
+and reuse them across series and epochs. Training resampling requires worker
+copies to receive the updated series list each epoch, so the loader disables persistent
 workers when necessary even if requested in the runtime YAML. This prevents
 stale worker-side anchor selections.
 
@@ -485,7 +487,7 @@ Dataset-scoped overlays live in `configs/ablations/issm/` and
 standalone launcher containing its stack and environment. Later-phase files
 fail until their visible selected-history placeholders are filled.
 
-`old-files/`, `legacy-scripts/`, and `legacy-v2/` are historical provenance only.
+`old-files/` and `legacy-scripts/` are historical provenance only.
 They do not define current configurations or results. Current implementation
 and new evidence take precedence over historical documents. See the
 [docs index](README.md) and [refactor record](config_evaluation_refactor_20261004.md).
