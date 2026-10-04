@@ -1,0 +1,7 @@
+training:
+  temporal_consistency:
+    enabled: true
+    mode: adjacent_increment
+    weight: 1.0
+    penalty: mse
+    rmse_eps: 1.0e-8

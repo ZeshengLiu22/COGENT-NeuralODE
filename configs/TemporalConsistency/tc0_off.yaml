@@ -1,0 +1,5 @@
+training:
+  temporal_consistency:
+    enabled: false
+    mode: none
+    weight: 1.0

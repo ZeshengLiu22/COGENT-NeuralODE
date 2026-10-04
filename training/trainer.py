@@ -15,7 +15,11 @@ from torch.optim.lr_scheduler import CosineAnnealingLR
 from datasets.split_utils import make_split_manifest
 from training.evaluator import Evaluator
 from training.horizon_sampling import curriculum_horizon_max, synchronized_horizon
-from training.losses import rollout_mse
+from training.losses import (
+    compute_temporal_consistency,
+    rollout_mse,
+    validate_temporal_consistency_config,
+)
 from utils.io import save_checkpoint, save_json
 from utils.logging_utils import rank0_log
 from utils.seed import get_rank
@@ -133,6 +137,12 @@ class Trainer:
         self.max_grad_norm = float(training_cfg.get("max_grad_norm", 0.0))
         self.grad_clip_norm_dtype = training_cfg.get("grad_clip_norm_dtype", "fp32")
         self.loss_scale_factor = training_cfg.get("loss_scale_factor", 1.0)
+        tc_cfg = training_cfg.get("temporal_consistency", {})
+        validate_temporal_consistency_config(tc_cfg)
+        self.tc_enabled = bool(tc_cfg.get("enabled", False))
+        self.tc_mode = str(tc_cfg.get("mode", "none")).lower()
+        self.tc_weight = float(tc_cfg.get("weight", 1.0))
+        self.tc_config = tc_cfg
         self.val_every = int(training_cfg.get("val_every", 1))
         evaluation_cfg = config["evaluation"]
         self.full_rollout_on_val = bool(evaluation_cfg.get("full_rollout_on_val", True))
@@ -258,6 +268,13 @@ class Trainer:
         phys_sq_sum = torch.zeros(1, device=self.device, dtype=torch.float64)
         phys_abs_sum = torch.zeros(1, device=self.device, dtype=torch.float64)
         element_count = torch.zeros(1, device=self.device, dtype=torch.float64)
+        objective_names = (
+            "train_state_objective", "train_tc_raw",
+            "train_tc_weighted", "train_total_objective", "train_tc_adjacent",
+            "train_tc_random_pair", "train_tc_rate", "train_tc_curvature",
+        )
+        objective_sums = torch.zeros(len(objective_names), device=self.device, dtype=torch.float64)
+        objective_batch_count = torch.zeros(1, device=self.device, dtype=torch.float64)
         self.optimizer.zero_grad(set_to_none=True)
 
         current_k_eff = None
@@ -275,8 +292,18 @@ class Trainer:
             if self.loss_scale_factor != 1.0:
                 y_pred_loss = y_pred_loss * self.loss_scale_factor
                 y_true_loss = y_true_loss * self.loss_scale_factor
-            loss = rollout_mse(y_pred_loss, y_true_loss)
-            loss = loss / actual_group_size
+            state_loss = rollout_mse(y_pred_loss, y_true_loss)
+            tc_result = compute_temporal_consistency(
+                y_pred_loss, y_true_loss, batch.t_future.float(), self.tc_config,
+            )
+            tc_raw = tc_result["total"]
+            if self.tc_enabled:
+                tc_weighted = self.tc_weight * tc_raw
+                total_loss = state_loss + tc_weighted
+            else:
+                tc_weighted = tc_raw
+                total_loss = state_loss
+            loss = total_loss / actual_group_size
 
             if not torch.isfinite(loss):
                 raise FloatingPointError(
@@ -320,14 +347,26 @@ class Trainer:
             phys_sq_sum += (phys_diff * phys_diff).sum().to(dtype=torch.float64)
             phys_abs_sum += phys_diff.abs().sum().to(dtype=torch.float64)
             element_count += float(pred_norm.numel())
+            # Average optimization-space objectives over microbatches, before
+            # gradient accumulation divides each loss. These are diagnostics only.
+            objective_values = torch.stack([
+                state_loss.detach(), tc_raw.detach(),
+                tc_weighted.detach(), total_loss.detach(),
+                tc_result["adjacent"].detach(), tc_result["random_pair"].detach(),
+                tc_result["rate"].detach(), tc_result["curvature"].detach(),
+            ])
+            objective_sums += objective_values.to(dtype=torch.float64)
+            objective_batch_count += 1
 
         self._all_reduce(norm_sq_sum)
         self._all_reduce(phys_sq_sum)
         self._all_reduce(phys_abs_sum)
         self._all_reduce(element_count)
+        self._all_reduce(objective_sums)
+        self._all_reduce(objective_batch_count)
         safe_count = torch.clamp(element_count, min=1.0)
         train_norm_mse = norm_sq_sum / safe_count
-        return {
+        metrics = {
             "train_loss": float(train_norm_mse.item()),
             "train_norm_mse": float(train_norm_mse.item()),
             "train_norm_rmse": float(torch.sqrt(train_norm_mse).item()),
@@ -337,6 +376,9 @@ class Trainer:
             "train_horizon_max": float(horizon_max),
             "train_horizon_target_max": float(target_horizon_max),
         }
+        objective_means = objective_sums / objective_batch_count.clamp(min=1.0)
+        metrics.update(zip(objective_names, objective_means.tolist()))
+        return metrics
 
     def _save_checkpoint(self, epoch: int, metric_value: float) -> None:
         if get_rank() != 0:
@@ -408,6 +450,13 @@ class Trainer:
             f"train_norm_mse={train_metrics['train_norm_mse']:.6f}",
             f"train_phys_rmse={train_metrics['train_phys_rmse']:.6f}",
         ]
+        if self.tc_enabled:
+            parts.extend(
+                f"{name}={train_metrics[name]:.6f}" for name in (
+                    "train_state_objective", "train_tc_raw",
+                    "train_tc_weighted", "train_total_objective",
+                )
+            )
 
         val_window = epoch_record.get("val_window")
         if val_window is not None:

@@ -1,0 +1,14 @@
+training:
+  temporal_consistency:
+    enabled: true
+    mode: hybrid
+    weight: 1.0
+    penalty: mse
+    rmse_eps: 1.0e-8
+    rate:
+      lags: [3, 6, 12]
+      lag_weights: null
+    hybrid:
+      adjacent_weight: 1.0
+      rate_weight: 1.0
+      curvature_weight: 1.0
