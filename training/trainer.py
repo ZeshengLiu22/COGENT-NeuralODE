@@ -143,6 +143,11 @@ class Trainer:
         self.tc_mode = str(tc_cfg.get("mode", "none")).lower()
         self.tc_weight = float(tc_cfg.get("weight", 1.0))
         self.tc_config = tc_cfg
+        self.tc_generator = None
+        if self.tc_enabled and self.tc_mode == "random_pair_increment":
+            # Keep temporal sampling independent of dropout and horizon RNG.
+            self.tc_generator = torch.Generator(device=self.device)
+            self.tc_generator.manual_seed(int(config.get("seed", 42)) + get_rank())
         self.val_every = int(training_cfg.get("val_every", 1))
         evaluation_cfg = config["evaluation"]
         self.full_rollout_on_val = bool(evaluation_cfg.get("full_rollout_on_val", True))
@@ -295,6 +300,7 @@ class Trainer:
             state_loss = rollout_mse(y_pred_loss, y_true_loss)
             tc_result = compute_temporal_consistency(
                 y_pred_loss, y_true_loss, batch.t_future.float(), self.tc_config,
+                node_batch=getattr(batch, "batch", None), generator=self.tc_generator,
             )
             tc_raw = tc_result["total"]
             if self.tc_enabled:
@@ -367,7 +373,6 @@ class Trainer:
         safe_count = torch.clamp(element_count, min=1.0)
         train_norm_mse = norm_sq_sum / safe_count
         metrics = {
-            "train_loss": float(train_norm_mse.item()),
             "train_norm_mse": float(train_norm_mse.item()),
             "train_norm_rmse": float(torch.sqrt(train_norm_mse).item()),
             "train_phys_rmse": float(torch.sqrt(phys_sq_sum / safe_count).item()),
@@ -378,6 +383,9 @@ class Trainer:
         }
         objective_means = objective_sums / objective_batch_count.clamp(min=1.0)
         metrics.update(zip(objective_names, objective_means.tolist()))
+        # train_norm_mse remains the prediction metric; train_loss reports the
+        # optimization-space objective, including state scaling and optional TC.
+        metrics["train_loss"] = metrics["train_total_objective"]
         return metrics
 
     def _save_checkpoint(self, epoch: int, metric_value: float) -> None:

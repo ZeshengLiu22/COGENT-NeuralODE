@@ -12,9 +12,10 @@ from unittest.mock import patch
 import numpy as np
 import torch
 from torch.nn.parallel import DistributedDataParallel as DDP
-from torch_geometric.data import Data
+from torch_geometric.data import Batch, Data
 
 from training.evaluator import Evaluator
+from training.losses import compute_temporal_consistency
 from training.trainer import Trainer
 from utils.eval_artifacts import _metric_rows_and_values
 
@@ -53,10 +54,22 @@ class BatchLoader(list):
     sampler = None
 
 
+class DropoutSlopeModel(SlopeModel):
+    def __init__(self):
+        super().__init__()
+        self.dropout_masks = []
+
+    def forward(self, data):
+        mask = torch.nn.functional.dropout(torch.ones_like(data.y_future), p=0.5, training=self.training)
+        self.dropout_masks.append(mask.detach().clone())
+        return (super().forward(data) + 0.25) * mask
+
+
 class FoundationTrainingTest(unittest.TestCase):
     def make_trainer(self, root, training_amp="bf16", evaluation=None, *,
-                     training=None, future_len=1, model=None, node_counts=(1, 1, 1)):
+                     training=None, future_len=1, model=None, node_counts=(1, 1, 1), seed=42):
         config = {
+            "seed": seed,
             "dataset": {"data_dir": str(root)},
             "training": {"epochs": 1, "lr": 0.0, "grad_accum_steps": 2,
                          "train_horizon_mode": "uniform_random", "train_horizon_min": future_len,
@@ -125,7 +138,8 @@ class FoundationTrainingTest(unittest.TestCase):
                 metrics["train_total_objective"],
                 metrics["train_state_objective"] + metrics["train_tc_weighted"], places=4,
             )
-            self.assertEqual(metrics["train_loss"], metrics["train_norm_mse"])
+            self.assertEqual(metrics["train_loss"], metrics["train_total_objective"])
+            self.assertNotEqual(metrics["train_loss"], metrics["train_norm_mse"])
             self.assertAlmostEqual(metrics["train_norm_mse"], expected_norm_mse)
             self.assertAlmostEqual(metrics["train_phys_rmse"], np.sqrt(expected_norm_mse))
             for key in ("train_tc_random_pair", "train_tc_rate", "train_tc_curvature"):
@@ -181,6 +195,59 @@ class FoundationTrainingTest(unittest.TestCase):
             self.assertEqual(disabled_metrics["train_tc_weighted"], 0.0)
             self.assertEqual(disabled_metrics["train_total_objective"],
                              disabled_metrics["train_state_objective"])
+            self.assertEqual(disabled_metrics["train_loss"], disabled_metrics["train_state_objective"])
+            self.assertIsNone(disabled.tc_generator)
+
+    def test_random_pair_uses_graph_membership_and_preserves_dropout_rng(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            baseline = self.make_trainer(Path(tmp), future_len=4, model=DropoutSlopeModel())
+            temporal = self.make_trainer(
+                Path(tmp), future_len=4, model=DropoutSlopeModel(),
+                training={"temporal_consistency": {
+                    "enabled": True, "mode": "random_pair_increment",
+                }},
+            )
+            for trainer in (baseline, temporal):
+                trainer.train_loader = BatchLoader(
+                    Batch.from_data_list([
+                        Data(y_future=sample.y_future.repeat(nodes, 1, 1),
+                             t_future=sample.t_future.clone(), num_nodes=nodes)
+                        for nodes in (2, 3)
+                    ]) for sample in trainer.train_loader
+                )
+            initial_rng = torch.random.get_rng_state().clone()
+            initial_pair_rng = temporal.tc_generator.get_state().clone()
+            baseline.train_epoch(1)
+            baseline_rng = torch.random.get_rng_state().clone()
+            torch.random.set_rng_state(initial_rng)
+            with patch("training.trainer.compute_temporal_consistency", wraps=compute_temporal_consistency) as compute:
+                metrics = temporal.train_epoch(1)
+            torch.testing.assert_close(torch.random.get_rng_state(), baseline_rng, rtol=0, atol=0)
+            self.assertFalse(torch.equal(temporal.tc_generator.get_state(), initial_pair_rng))
+            self.assertGreater(metrics["train_tc_random_pair"], 0.0)
+            self.assertEqual(temporal.model.forward_calls, len(temporal.train_loader))
+            for actual_mask, baseline_mask in zip(temporal.model.dropout_masks, baseline.model.dropout_masks):
+                torch.testing.assert_close(actual_mask, baseline_mask, rtol=0, atol=0)
+            for call in compute.call_args_list:
+                torch.testing.assert_close(call.kwargs["node_batch"], torch.tensor([0, 0, 1, 1, 1]))
+                self.assertIs(call.kwargs["generator"], temporal.tc_generator)
+
+    def test_random_pair_generator_seed_is_rank_specific_and_reproducible(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            initial_rng = torch.random.get_rng_state().clone()
+            generators = []
+            for rank in (0, 1, 0):
+                with patch("training.trainer.get_rank", return_value=rank):
+                    trainer = self.make_trainer(
+                        Path(tmp), seed=123, training={"temporal_consistency": {
+                            "enabled": True, "mode": "random_pair_increment",
+                        }},
+                    )
+                self.assertEqual(trainer.tc_generator.initial_seed(), 123 + rank)
+                generators.append(trainer.tc_generator.get_state())
+            torch.testing.assert_close(generators[0], generators[2], rtol=0, atol=0)
+            self.assertFalse(torch.equal(generators[0], generators[1]))
+            torch.testing.assert_close(torch.random.get_rng_state(), initial_rng, rtol=0, atol=0)
 
     def test_accumulation_tail_uses_actual_group_size(self):
         with tempfile.TemporaryDirectory() as tmp:

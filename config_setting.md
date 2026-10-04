@@ -1,26 +1,32 @@
 # Config Setting Guide
 
-This file explains how to set the YAML configs in this repo.
+This file explains YAML configuration and retains some historical model examples.
+The active runtime supports NODE2; references below to NODE1, NCDE1, or their
+removed config files are historical and must not be used for current runs.
+Earlier Transformer-only ablation file examples are also historical where the
+named overlay no longer exists; use `history_encoder_type` for custom ablations.
+Current launch commands are in [the shell handbook](handbook.md), and the TC
+objective and logging contract are in [the temporal-consistency guide](docs/temporal_consistency.md).
 
-The short version:
+The current NODE2 quick start:
 
 ```bash
 python scripts/train.py \
   --config configs/ANUGA_History_Scan/base_ANUGA_history8.yaml \
   --config configs/anuga.yaml \
-  --config configs/model_node1.yaml
+  --config configs/model_node2.yaml
 ```
 
 Config files are merged from left to right. Later files override earlier files.
 
-For example, `configs/ANUGA_History_Scan/base_ANUGA_history8.yaml` contains ANUGA-oriented training defaults with eight history steps, while `configs/base_ISSM_history_N.yaml` contains ISSM-oriented history/window/evaluation defaults.
+For example, `configs/ANUGA_History_Scan/base_ANUGA_history8.yaml` contains ANUGA-oriented training defaults with eight history steps, while `configs/ISSM_History_Scan/base_ISSM_history_6.yaml` contains ISSM-oriented history/window/evaluation defaults.
 
 ## Config Files
 
 | File | Purpose |
 | --- | --- |
 | `configs/ANUGA_History_Scan/base_ANUGA_history<N>.yaml` | ANUGA-oriented defaults for dataset windows, model size, solver, training, evaluation, DDP, and AMP. Choose `<N>` from `1` through `8` to set `dataset.history_len`. |
-| `configs/base_ISSM_history_N.yaml` | ISSM-oriented defaults for dataset windows, model size, solver, training, evaluation, DDP, and AMP. |
+| `configs/ISSM_History_Scan/base_ISSM_history_6.yaml` | ISSM-oriented defaults for dataset windows, model size, solver, training, evaluation, DDP, and AMP. |
 | `configs/base_sample.yaml` | Small/shared sample defaults retained for quick local runs and compatibility. |
 | `configs/anuga.yaml` | ANUGA dataset path and file pattern. |
 | `configs/adcirc.yaml` | ADCIRC dataset path and file patterns. |
@@ -51,16 +57,16 @@ Common combinations:
 --config configs/ANUGA_History_Scan/base_ANUGA_history1.yaml --config configs/anuga.yaml --config configs/model_node2.yaml --config configs/NODE2_Upgrade1_Ablation/model_node2_upgrade_off.yaml
 
 # ISSM NODE1
---config configs/base_ISSM_history_N.yaml --config configs/issm.yaml --config configs/model_node1.yaml
+--config configs/ISSM_History_Scan/base_ISSM_history_6.yaml --config configs/issm.yaml --config configs/model_node1.yaml
 
 # ISSM NODE2
---config configs/base_ISSM_history_N.yaml --config configs/issm.yaml --config configs/model_node2.yaml
+--config configs/ISSM_History_Scan/base_ISSM_history_6.yaml --config configs/issm.yaml --config configs/model_node2.yaml
 
 # ISSM NODE2 residual-only ablation
---config configs/base_ISSM_history_N.yaml --config configs/issm.yaml --config configs/model_node2.yaml --config configs/NODE2_Upgrade1_Ablation/model_node2_residual_only.yaml
+--config configs/ISSM_History_Scan/base_ISSM_history_6.yaml --config configs/issm.yaml --config configs/model_node2.yaml --config configs/NODE2_Upgrade1_Ablation/model_node2_residual_only.yaml
 
 # ISSM NCDE1
---config configs/base_ISSM_history_N.yaml --config configs/issm.yaml --config configs/model_ncde1.yaml
+--config configs/ISSM_History_Scan/base_ISSM_history_6.yaml --config configs/issm.yaml --config configs/model_ncde1.yaml
 
 # ADCIRC NODE1
 --config configs/base_sample.yaml --config configs/adcirc.yaml --config configs/model_node1.yaml
@@ -373,7 +379,7 @@ Important behavior:
 - Uses `model.use_residual_decoder`.
 - Uses `model.use_history_in_ode`.
 - Uses `model.use_relative_time`.
-- Uses `model.relative_time_mode`.
+- Uses `model.relative_time_scale`, fixed independently of the requested horizon.
 
 Best when direct state-space dynamics are too restrictive.
 
@@ -413,7 +419,7 @@ These live directly under `model:`.
 | `use_residual_decoder` | `true` or `false` | NODE2-only. If `true`, decoder output is treated as a delta and added to the last observed normalized state. |
 | `use_history_in_ode` | `true` or `false` | NODE2-only. If `true`, the latent ODE vector field receives `hist_context` at every function evaluation. |
 | `use_relative_time` | `true` or `false` | NODE2-only. If `true`, the latent ODE vector field receives a normalized scalar relative time. |
-| `relative_time_mode` | `normalized` | NODE2-only. Normalizes solver time by the final requested rollout time, giving a scalar in `[0, 1]`. |
+| `relative_time_scale` | finite number `> 0` | Fixed denominator in `rel_t = t / relative_time_scale`; independent of the requested horizon, with no endpoint clipping. Standard ISSM: 180; ANUGA: 65; paper-matched ISSM: 239. |
 
 Typical choices:
 
@@ -435,7 +441,7 @@ model:
 
 These live under `model.history_encoder:`.
 
-The history encoder is shared by all three models.
+The active NODE2 history encoder uses `history_encoder_type` as its sole temporal-encoder selector. The old `use_transformer_history` field is not used.
 
 | Key | Supported values | What it does |
 | --- | --- | --- |
@@ -725,24 +731,31 @@ Use this for the simplest state-space NODE baseline.
 
 ```yaml
 model:
-  name: node2
   latent_dim: 96
   decoder_hidden_dims: [96, 96]
-  decoder_chunk_size: 262144
   use_residual_decoder: true
   use_history_in_ode: true
   use_relative_time: true
-  relative_time_mode: normalized
+  history_encoder:
+    history_encoder_type: transformer
+    history_transformer_num_layers: 2
+    history_transformer_num_heads: 4
+    history_transformer_ff_dim: 384
+    history_transformer_dropout: 0.05
+    history_use_positional_encoding: true
+    history_context_pooling: last
 
 solver:
   interpolation: hermite_cubic_backward
 ```
 
-Use this for upgraded latent NODE dynamics. Add NODE2 ablation overlays after this file so their values override the upgraded defaults.
+Use this for upgraded latent NODE dynamics. It deliberately omits
+`relative_time_scale`, preserving the dataset/protocol scale. Add NODE2 ablation
+overlays after this file so their values override the upgraded defaults.
 
 ### NODE2 upgrade-v1 overlay configs
 
-All files in this section live under `configs/NODE2_Upgrade1_Ablation/` and are overlays. Use them after `configs/model_node2.yaml`, not instead of it, so the run still selects `name: node2`, `latent_dim`, decoder sizes, and solver interpolation from the main NODE2 config.
+All files in this section live under `configs/NODE2_Upgrade1_Ablation/` and are overlays. Use them after `configs/model_node2.yaml`, not instead of it, so the run retains `latent_dim`, decoder sizes, and solver interpolation from the main NODE2 config. NODE2 is the active runtime model.
 
 Old baseline-like mode:
 

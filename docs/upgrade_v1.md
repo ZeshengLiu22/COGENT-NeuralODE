@@ -1,5 +1,9 @@
 # NODE2 Upgrade V1
 
+This architecture reference includes the foundation correctness fixes. Current
+launch commands are in [the shell handbook](../handbook.md); optional temporal
+objectives are described in [temporal consistency](temporal_consistency.md).
+
 ## Overview
 
 Original NODE2 was a latent-space controlled graph Neural ODE:
@@ -12,14 +16,14 @@ y_hat(t)= DecMLP(z(t))
 
 where `u(t)` is interpolated future forcing, `s` is the static node embedding, and `G` is the graph.
 
-Upgrade v1 keeps NODE2 as an ODE and keeps the training objective as rollout MSE only. It adds four optional architectural upgrades:
+Upgrade v1 keeps NODE2 as an ODE. Rollout MSE remains the state objective; the current trainer can also add one configurable temporal-consistency term. The four architectural upgrades are:
 
 - residual decoder
 - history-aware ODE evolution
 - temporal-only Transformer history encoding
 - explicit normalized relative time in the NODE2 vector field
 
-All newly introduced upgrade flags default to enabled in the upgraded config. Existing dataset, solver, training, horizon, and evaluation values were preserved.
+The upgraded model config enables all four options. Dataset/protocol scales come from the dataset or protocol config; the model overlay leaves them intact.
 
 ## Original NODE2 vs Upgraded NODE2
 
@@ -50,7 +54,6 @@ model:
   use_relative_time: false
   history_encoder:
     history_encoder_type: lstm
-    use_transformer_history: false
 ```
 
 ## Upgrade List
@@ -164,7 +167,7 @@ Implementation details:
 - Sinusoidal positional encoding is added by default.
 - `history_context_pooling: last` takes the last temporal token output as `hist_context`.
 - `history_context_pooling: mean` is available for mean pooling.
-- The old LSTM path remains available for ablation.
+- The LSTM path remains available for ablation, selected only by `history_encoder_type: lstm`. The retired `use_transformer_history` flag is not a runtime selector.
 - `hist_context_dim` remains tied to `lstm_hidden_dim`; if Transformer output dimension differs, a small projection maps it to `D_hist`.
 - For large node counts, the Transformer runs over node-batch chunks by default. Chunking is along `N_total`, not `H`, so each node still attends across its full history window.
 - On CUDA, the temporal Transformer defaults to PyTorch's math scaled-dot-product attention backend to avoid oversized fused-attention launches on large meshes.
@@ -175,7 +178,6 @@ Config:
 model:
   history_encoder:
     history_encoder_type: transformer
-    use_transformer_history: true
     history_transformer_num_layers: 2
     history_transformer_num_heads: 4
     history_transformer_ff_dim: 384
@@ -192,7 +194,6 @@ How to disable:
 model:
   history_encoder:
     history_encoder_type: lstm
-    use_transformer_history: false
 ```
 
 Expected benefit:
@@ -210,15 +211,15 @@ Original NODE2 received forcing evaluated at continuous solver time, but the vec
 Mathematical idea:
 
 ```text
-rel_t = t / t_final
+rel_t = t / relative_time_scale
 dz/dt = f_theta(z(t), u(t), s, c_hist, rel_t, G)
 ```
 
 Implementation details:
 
 - Implemented in `models/continuous/node_latent_block.py`.
-- `t_final` is the final requested future evaluation time in the current rollout window.
-- `rel_t` is clamped to `[0, 1]`.
+- `model.relative_time_scale` is a fixed positive finite scale saved with the model config: 180 for standard ISSM, 65 for ANUGA, and 239 for the ISSM paper-matched protocol.
+- The scale is independent of the requested horizon, and `rel_t` is not clamped. Extending a rollout therefore preserves its prediction prefix.
 - The scalar is broadcast to `[N_total, 1]` and concatenated into the vector-field input.
 - The forcing interpolator is unchanged.
 - NODE2 remains an ODE, not an NCDE.
@@ -228,7 +229,7 @@ Config:
 ```yaml
 model:
   use_relative_time: true
-  relative_time_mode: normalized
+  relative_time_scale: 180  # Standard ISSM; ANUGA: 65, paper-matched ISSM: 239
 ```
 
 How to disable:
@@ -357,16 +358,17 @@ delta_y = DecMLP(z_future)
 y_hat   = last_state.unsqueeze(1) + delta_y
 ```
 
-## What Is Not Implemented
+## Scope of the Architecture Upgrade
 
-Upgrade v1 intentionally does not add:
+The architecture upgrade did not add the following features:
 
 - graph-temporal attention
 - space-time graph Transformer redesign
 - horizon-weighted rollout loss
-- rollout consistency regularization
 - NODE2-to-NCDE redesign
-- new training objectives beyond rollout MSE
+
+The current training objective separately supports temporal consistency while
+retaining rollout MSE; see [temporal consistency](temporal_consistency.md).
 
 ## Ablation Plan
 
@@ -396,7 +398,6 @@ Transformer history off / LSTM history on:
 model:
   history_encoder:
     history_encoder_type: lstm
-    use_transformer_history: false
 ```
 
 Relative time off:
@@ -409,13 +410,13 @@ model:
 All upgrades off:
 
 ```bash
-EXTRA_CONFIGS=configs/model_node2_upgrade_off.yaml ./train_anuga_node2.sh
+EXTRA_CONFIGS=configs/NODE2_Upgrade1_Ablation/model_node2_upgrade_off.yaml ./train_anuga_node2.sh
 ```
 
 Only residual decoder on:
 
 ```bash
-EXTRA_CONFIGS=configs/model_node2_residual_only.yaml ./train_anuga_node2.sh
+EXTRA_CONFIGS=configs/NODE2_Upgrade1_Ablation/model_node2_residual_only.yaml ./train_anuga_node2.sh
 ```
 
 Transformer history on but history-in-ODE off:
@@ -425,7 +426,6 @@ model:
   use_history_in_ode: false
   history_encoder:
     history_encoder_type: transformer
-    use_transformer_history: true
 ```
 
 ## Backward Compatibility Notes
@@ -436,10 +436,11 @@ model:
 - NODE2 can still use the original vector field input shape by disabling `use_history_in_ode` and `use_relative_time`.
 - Decoder and temporal-Transformer chunking are memory/execution details only. They add no learned parameters and should not require retraining already completed baselines for metric comparison.
 - Horizon curriculum is supported separately as upgrade 1.1; see `docs/upgrade_v1.1.md`.
-- No existing dataset, normalization, solver, loss, or evaluation metric behavior was intentionally changed.
-- Pre-existing repo values were preserved; only newly introduced args received upgraded default settings.
+- Subsequent foundation repairs changed dataset inputs, normalization, and relative-time semantics; consult the [foundation report](foundation_correctness_repair.md) for checkpoint compatibility.
 
-Old checkpoints trained before this upgrade should be evaluated with matching old-baseline config overrides, because enabling history/time inputs changes the NODE2 dynamics parameter shapes.
+Standalone evaluation restores the saved checkpoint config and split. Old ISSM
+checkpoints predating the foundation repair require retraining; current CLI
+overrides cannot silently change the saved architecture or solver.
 
 ## Example Commands
 
@@ -452,20 +453,20 @@ Full upgraded ANUGA NODE2:
 Old baseline-like ANUGA NODE2:
 
 ```bash
-EXTRA_CONFIGS=configs/model_node2_upgrade_off.yaml ./train_anuga_node2.sh
+EXTRA_CONFIGS=configs/NODE2_Upgrade1_Ablation/model_node2_upgrade_off.yaml ./train_anuga_node2.sh
 ```
 
 Only residual decoder enabled:
 
 ```bash
-EXTRA_CONFIGS=configs/model_node2_residual_only.yaml ./train_anuga_node2.sh
+EXTRA_CONFIGS=configs/NODE2_Upgrade1_Ablation/model_node2_residual_only.yaml ./train_anuga_node2.sh
 ```
 
 Direct Python training with full upgraded configs:
 
 ```bash
 python scripts/train.py \
-  --config configs/base_ANUGA.yaml \
+  --config configs/ANUGA_History_Scan/base_ANUGA_history8.yaml \
   --config configs/anuga.yaml \
   --config configs/model_node2.yaml
 ```
@@ -474,8 +475,8 @@ Direct Python training with old baseline-like overrides:
 
 ```bash
 python scripts/train.py \
-  --config configs/base_ANUGA.yaml \
+  --config configs/ANUGA_History_Scan/base_ANUGA_history8.yaml \
   --config configs/anuga.yaml \
   --config configs/model_node2.yaml \
-  --config configs/model_node2_upgrade_off.yaml
+  --config configs/NODE2_Upgrade1_Ablation/model_node2_upgrade_off.yaml
 ```

@@ -1,5 +1,11 @@
 # COGENT-NeuralODE foundation correctness repair
 
+> **Foundation-repair execution record.** The test counts and statements about
+> rollout-MSE-only training below describe this repair stage, before commit
+> `f96cae3` added temporal consistency. Current TC behavior is documented in
+> [temporal consistency](temporal_consistency.md); current launcher usage is in
+> [the shell handbook](../handbook.md).
+
 Date: 2026-10-04. Starting repository state: `d4e655e` (cleaned NODE2 pipeline).
 
 The requested correctness and protocol repairs are implemented. All **48 CPU tests pass**. Real-data audits confirm the ISSM forcing leak is removed, ANUGA rainfall normalizes to unit standard deviation, and relative-time rollout prefixes agree exactly on both full real meshes. No formal training was launched. The only optimization runs used tiny synthetic trajectories.

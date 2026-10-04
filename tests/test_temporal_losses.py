@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import torch
 
@@ -207,6 +208,110 @@ class TemporalLossTest(unittest.TestCase):
             second = temporal_random_pair_increment(pred, true, num_pairs=2)
         torch.testing.assert_close(first, second)
 
+    def test_pairs_are_shared_within_graph_and_independent_across_graphs(self):
+        # A single increment yields nonzero gradients at exactly its two times.
+        # Identical trajectories let us observe pair selection without exposing
+        # or duplicating the sampler implementation in the test.
+        node_batch = torch.arange(12).repeat_interleave(3)
+        pred = torch.arange(8, dtype=torch.float64)[None, :, None].repeat(36, 1, 2)
+        pred.requires_grad_()
+        loss = compute_temporal_consistency(
+            pred, torch.zeros_like(pred), None, config("random_pair_increment"),
+            node_batch=node_batch, generator=torch.Generator().manual_seed(1729),
+        )["total"]
+        loss.backward()
+        support = pred.grad.abs().sum(dim=2).ne(0)
+        pairs_per_graph = []
+        for graph in range(12):
+            nodes = support[node_batch == graph]
+            self.assertTrue(torch.equal(nodes, nodes[0:1].expand_as(nodes)))
+            self.assertEqual(nodes[0].sum().item(), 2)
+            pairs_per_graph.append(tuple(nodes[0].nonzero().flatten().tolist()))
+        self.assertGreater(len(set(pairs_per_graph)), 1)
+
+    def test_graph_sampling_preserves_node_average_and_no_replacement(self):
+        # Graph IDs need not be contiguous or nodes adjacent. The three-node
+        # graph has three times the weight of the one-node graph, as in MSE.
+        node_batch = torch.tensor([7, 2, 7, 7])
+        pred = torch.tensor([0.0, 1.0, 4.0, 9.0], dtype=torch.float64)[None, :, None]
+        pred = pred * torch.tensor([1.0, 2.0, 3.0, 4.0])[:, None, None]
+        pred.requires_grad_()
+        # Sorted graph 2 selects (0,1),(0,3), graph 7 selects (2,3),(1,3).
+        scores = torch.tensor([[0.9, 0.1, 0.8, 0.2, 0.3, 0.4],
+                               [0.1, 0.2, 0.3, 0.4, 0.5, 0.9]])
+        with patch("training.losses.torch.rand", return_value=scores):
+            loss = temporal_random_pair_increment(
+                pred, torch.zeros_like(pred), num_pairs=2, node_batch=node_batch,
+            )
+        expected = (26.0 * (25.0 + 64.0) + 4.0 * (1.0 + 81.0)) / 8.0
+        self.assertEqual(loss.item(), expected)
+        loss.backward()
+        self.assertTrue(torch.isfinite(pred.grad).all())
+
+    def test_private_pair_generator_is_reproducible_and_isolates_global_rng(self):
+        pred = trajectory([0.0, 1.0, 4.0, 9.0, 16.0])
+        true = torch.zeros_like(pred)
+        membership = torch.tensor([0, 1])
+        first_gen = torch.Generator().manual_seed(42)
+        second_gen = torch.Generator().manual_seed(42)
+        initial_gen_state = first_gen.get_state().clone()
+        global_state = torch.random.get_rng_state().clone()
+        first_run = [
+            compute_temporal_consistency(
+                pred, true, None, config("random_pair_increment", random_pair={"num_pairs": 2}),
+                node_batch=membership, generator=first_gen,
+            )["total"]
+            for _ in range(3)
+        ]
+        self.assertTrue(torch.equal(torch.random.get_rng_state(), global_state))
+        self.assertFalse(torch.equal(first_gen.get_state(), initial_gen_state))
+        with torch.random.fork_rng():
+            # Model/dropout randomness cannot change the private pair stream.
+            torch.manual_seed(123)
+            torch.rand(100)
+            second_run = [
+                compute_temporal_consistency(
+                    pred, true, None, config("random_pair_increment", random_pair={"num_pairs": 2}),
+                    node_batch=membership, generator=second_gen,
+                )["total"]
+                for _ in range(3)
+            ]
+        torch.testing.assert_close(torch.stack(first_run), torch.stack(second_run))
+        self.assertTrue(torch.equal(first_gen.get_state(), second_gen.get_state()))
+
+    def test_omitted_membership_samples_one_graph(self):
+        pred = trajectory([0.0, 1.0, 4.0, 9.0])
+        true = torch.zeros_like(pred)
+        implicit = temporal_random_pair_increment(
+            pred, true, generator=torch.Generator().manual_seed(12),
+        )
+        explicit = temporal_random_pair_increment(
+            pred, true, node_batch=torch.zeros(pred.shape[0], dtype=torch.long),
+            generator=torch.Generator().manual_seed(12),
+        )
+        torch.testing.assert_close(implicit, explicit)
+
+    def test_invalid_graph_membership_fails_clearly(self):
+        pred = trajectory([0.0, 1.0, 4.0, 9.0])
+        for membership in (torch.tensor([0]), torch.tensor([[0, 1]]),
+                           torch.tensor([0.0, 1.0]), torch.tensor([-1, 0])):
+            with self.subTest(membership=membership):
+                with self.assertRaisesRegex(ValueError, "node_batch"):
+                    temporal_random_pair_increment(pred, pred, node_batch=membership)
+
+    def test_unavailable_or_disabled_pairs_do_not_advance_private_generator(self):
+        pred = trajectory([1.0])
+        generator = torch.Generator().manual_seed(42)
+        before = generator.get_state().clone()
+        temporal_random_pair_increment(pred, pred, generator=generator)
+        pred = trajectory([0.0, 1.0])
+        temporal_random_pair_increment(pred, pred, min_lag=3, generator=generator)
+        compute_temporal_consistency(
+            pred, pred, None, config("random_pair_increment", enabled=False),
+            generator=generator,
+        )
+        self.assertTrue(torch.equal(generator.get_state(), before))
+
     def test_rate_equal_and_explicit_weights_average_per_scale(self):
         pred = trajectory([0.0, 1.0, 4.0, 9.0])
         true = torch.zeros_like(pred)
@@ -265,10 +370,32 @@ class TemporalLossTest(unittest.TestCase):
         result = compute_temporal_consistency(
             pred, true, None, config("adjacent_increment", penalty="rmse", rmse_eps=0.01)
         )
-        self.assertAlmostEqual(result["total"].item(), (4.0 + 0.01) ** 0.5)
+        self.assertAlmostEqual(result["total"].item(), (4.0 + 0.01) ** 0.5 - 0.1)
         self.assertAlmostEqual(rollout_mse(pred, true).item(), 20.0 / 3.0)
         perfect = temporal_adjacent_increment(pred, pred, penalty="rmse", rmse_eps=0.01)
-        self.assertAlmostEqual(perfect.item(), 0.1)
+        self.assertEqual(perfect.item(), 0.0)
+
+    def test_rmse_perfect_match_has_zero_loss_and_finite_zero_gradient(self):
+        for dtype in (torch.float32, torch.float64):
+            for mode in MODES:
+                with self.subTest(dtype=dtype, mode=mode):
+                    true = trajectory(self.t.square()).to(dtype=dtype)
+                    pred = true.clone().requires_grad_()
+                    result = compute_temporal_consistency(
+                        pred, true, self.t, config(mode, penalty="rmse"),
+                    )
+                    for component in result.values():
+                        self.assertEqual(component.item(), 0.0)
+                    result["total"].backward()
+                    self.assertTrue(torch.isfinite(pred.grad).all())
+                    torch.testing.assert_close(pred.grad, torch.zeros_like(pred))
+
+    def test_rmse_epsilon_must_be_positive_for_direct_calls(self):
+        pred = trajectory(self.t)
+        for eps in (0.0, -1.0, float("nan"), float("inf")):
+            with self.subTest(eps=eps):
+                with self.assertRaisesRegex(ValueError, "rmse_eps"):
+                    temporal_adjacent_increment(pred, pred, penalty="rmse", rmse_eps=eps)
 
     def test_all_modes_backpropagate_finite_nonzero_gradients(self):
         for mode in MODES:
@@ -301,6 +428,15 @@ class TemporalLossTest(unittest.TestCase):
 
 
 class TemporalConfigTest(unittest.TestCase):
+    def test_invalid_rmse_epsilon(self):
+        for eps in (0.0, -1.0, float("nan"), float("inf")):
+            with self.subTest(eps=eps):
+                with self.assertRaisesRegex(ValueError, "rmse_eps"):
+                    validate_temporal_consistency_config(
+                        config("adjacent_increment", penalty="rmse", rmse_eps=eps)
+                    )
+        validate_temporal_consistency_config(config("adjacent_increment", rmse_eps=0.0))
+
     def test_invalid_general_config(self):
         invalid = (
             config("unsupported"),

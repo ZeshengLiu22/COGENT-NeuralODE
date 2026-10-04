@@ -1,5 +1,87 @@
 # Shell Script Handbook
 
+## Current NODE2 launchers
+
+The active runtime is NODE2. `train_anuga_node2.sh` and `train_issm_node2.sh`
+call the shared `train_anuga.sh` and `train_issm.sh` launchers. Run these commands
+from the repository root. They start detached tmux jobs; `NPROC` defaults to 4,
+and `PYTHON_BIN` can select the installed training environment.
+
+Configuration files are recursively merged from left to right:
+
+```text
+BASE_CONFIG → DATASET_CONFIG (optional) → MODEL_CONFIG
+            → ablation overlay (formal ablation helpers only)
+            → LOADER_CONFIG (optional) → EXTRA_CONFIGS (optional)
+```
+
+| Environment variable | Meaning |
+| --- | --- |
+| `BASE_CONFIG` | Training/window protocol. Shared defaults are H1 for both ANUGA and ISSM. |
+| `DATASET_CONFIG` | Defaults to `configs/anuga.yaml` or `configs/issm.yaml`. An explicit empty string skips this overlay. |
+| `MODEL_CONFIG` | Defaults to `configs/model_node2.yaml`. |
+| `LOADER_CONFIG` | Independent data/loader overlay. Empty by default in shared launchers; formal scan/ablation helpers retain their ANUGA or PIG5000 loader default. An explicit empty string skips it. |
+| `EXTRA_CONFIGS` | Space-separated final overrides, such as one TC config. Replacing this value leaves `LOADER_CONFIG` intact. |
+| `RUN_NAME`, `SESSION_NAME` | Output directory name and tmux session name. Use a distinct session for each concurrent run. |
+| `TRAIN_ARGS` | Additional training CLI arguments, such as `--horizon-curriculum off`. |
+
+An ordinary ISSM TC run on the 5 km dataset:
+
+```bash
+BASE_CONFIG=configs/ISSM_History_Scan/base_ISSM_history_6.yaml \
+LOADER_CONFIG=configs/ISSM_History_Scan/issm_pig5000_fast_loader.yaml \
+EXTRA_CONFIGS=configs/TemporalConsistency/tc3_multiscale_rate.yaml \
+RUN_NAME=issm_h6_tc3 SESSION_NAME=issm_h6_tc3 \
+bash train_issm_node2.sh
+```
+
+`LOADER_CONFIG` above selects PIG5000 explicitly. The formal ISSM history/future
+and ablation helpers select that overlay by default, independently of TC.
+The shared launchers retain their existing dataset default when no loader
+overlay is supplied.
+
+For the published-protocol-matched ISSM initial-state comparison:
+
+```bash
+BASE_CONFIG=configs/issm_paper_matched.yaml \
+DATASET_CONFIG='' \
+MODEL_CONFIG=configs/model_node2.yaml \
+LOADER_CONFIG=configs/ISSM_History_Scan/issm_pig5000_fast_loader.yaml \
+EXTRA_CONFIGS='' \
+RUN_NAME=issm_paper_matched SESSION_NAME=issm_paper_matched \
+bash train_issm.sh
+```
+
+This preserves H1/K239, `relative_time_scale: 239`, and
+`full_rollout_known_steps: 1`. The standard `configs/issm.yaml` overlay belongs
+to the separate forecasting protocol and would overwrite those last two
+settings. For the known `configs/issm_paper_matched.yaml` base, the ISSM launcher
+also skips its default dataset overlay when `DATASET_CONFIG` is unset; the
+explicit empty setting above works for custom self-contained protocol configs.
+“Paper matched” refers to the published information budget and split, rather
+than reproducing every detail of the historical external repository.
+
+For ANUGA with an independent loader and TC overlay:
+
+```bash
+LOADER_CONFIG=configs/ANUGA_History_Scan/anuga_fast_loader.yaml \
+EXTRA_CONFIGS=configs/TemporalConsistency/tc1_adjacent_increment.yaml \
+RUN_NAME=anuga_tc1 SESSION_NAME=anuga_tc1 \
+bash train_anuga_node2.sh
+```
+
+See [temporal consistency](docs/temporal_consistency.md) for all six overlays,
+objective definitions, sampling, and the `train_loss` logging migration.
+Evaluation restores the checkpoint's saved model/config/split; see the
+[foundation report](docs/foundation_correctness_repair.md) for protocol details.
+
+## Historical script reference
+
+The remainder preserves the earlier multi-model handbook. NODE1, NCDE1,
+structured V2, removed config paths, and their launch commands below are
+historical material, not current runtime instructions. Use the current guide
+above for new jobs.
+
 This is the quick memory aid for the `.sh` files in this repo.
 
 ## ANUGA Training Scripts

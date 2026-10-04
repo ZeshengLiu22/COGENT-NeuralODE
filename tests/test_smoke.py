@@ -382,6 +382,77 @@ class SmokeTest(unittest.TestCase):
         self.assertEqual(history[0]["train"]["train_horizon_max"], 1.0)
         self.assertTrue(any(not torch.equal(initial_parameters[name], parameter) for name, parameter in model.named_parameters()))
 
+    def test_temporal_training_checkpoint_smoke_for_anuga_and_issm(self) -> None:
+        # Give the synthetic ISSM reference genuine evolution, so TC is tested
+        # with nonconstant targets as well as nonconstant model predictions.
+        issm_path = self.root / "PIG_transient_m100_r080.npz"
+        with np.load(issm_path) as archive:
+            payload = {key: archive[key] for key in archive.files}
+        payload["state"] = payload["state"] + np.arange(6, dtype=np.float32)[:, None, None] * 0.1
+        np.savez(issm_path, **payload)
+
+        for dataset_name, dataset_type, train_path in (
+            ("anuga", ANUGADataset, self.root / "sim_000_merged.npz"),
+            ("issm", ISSMDataset, issm_path),
+        ):
+            for mode in ("none", "random_pair_increment", "multiscale_rate"):
+                with self.subTest(dataset=dataset_name, mode=mode):
+                    torch.manual_seed(17)
+                    train_dataset = dataset_type([train_path], history_len=2, future_len=3, split="train")
+                    normalizer = FeatureNormalizer.fit_from_trajectories(train_dataset.iter_trajectories())
+                    train_dataset.normalizer = normalizer
+                    datasets = [train_dataset]
+                    for split in ("val", "test"):
+                        path = self.root / f"{dataset_name}_{mode}_{split}.npz"
+                        shutil.copyfile(train_path, path)
+                        datasets.append(dataset_type(
+                            [path], history_len=2, future_len=3, split=split, normalizer=normalizer,
+                        ))
+                    loaders = [DataLoader(dataset, batch_size=2, shuffle=False) for dataset in datasets]
+                    config = _base_config()
+                    config.update({
+                        "seed": 17,
+                        "dataset": {"name": dataset_name, "data_dir": str(self.root)},
+                        "training": {
+                            "epochs": 1, "lr": 1e-3, "max_grad_norm": 1.0,
+                            "loss_scale_factor": 2.0,
+                            "train_horizon_min": 3, "train_horizon_max": 3,
+                            "train_horizon_curriculum": {"enabled": False},
+                            "temporal_consistency": {"enabled": mode != "none", "mode": mode},
+                        },
+                        "evaluation": {"checkpoint_metric": "whole_rollout_norm_rmse", "amp_mode": "none"},
+                        "amp": {"mode": "none"},
+                    })
+                    sample = train_dataset[0]
+                    dimensions = (sample.x_static.shape[-1], sample.force_hist.shape[-1], sample.state_hist.shape[-1])
+                    model = build_model(config, *dimensions)
+                    initial = {name: parameter.detach().clone() for name, parameter in model.named_parameters()}
+                    output_dir = self.root / f"training_{dataset_name}_{mode}"
+                    trainer = Trainer(
+                        model, *loaders, *datasets, normalizer, config, torch.device("cpu"),
+                        output_dir, logging.getLogger(__name__),
+                    )
+                    summary = trainer.fit()
+                    self.assertTrue(np.isfinite(summary["best_metric"]))
+                    self.assertTrue(np.isfinite(summary["test_rollout"]["whole_rollout_norm_rmse"]))
+                    self.assertTrue(any(
+                        not torch.equal(initial[name], parameter) for name, parameter in model.named_parameters()
+                    ))
+                    metrics = json.loads((output_dir / "history.json").read_text())[0]["train"]
+                    self.assertTrue(all(np.isfinite(value) for value in metrics.values()))
+                    self.assertEqual(metrics["train_loss"], metrics["train_total_objective"])
+                    if mode == "none":
+                        self.assertEqual(metrics["train_tc_raw"], 0.0)
+                    else:
+                        self.assertGreater(metrics["train_tc_raw"], 0.0)
+                    checkpoint = torch.load(output_dir / "best.pt", map_location="cpu")
+                    reloaded = build_model(checkpoint["config"], *dimensions)
+                    reloaded.load_state_dict(checkpoint["model_state"])
+                    model.eval()
+                    reloaded.eval()
+                    with torch.no_grad():
+                        torch.testing.assert_close(model(sample), reloaded(sample), rtol=0, atol=0)
+
     def test_training_horizon_truncation_keeps_future_fields_aligned(self) -> None:
         anuga = ANUGADataset([self.root / "sim_000_merged.npz"], history_len=3, future_len=2, split="train")
         batch = next(iter(DataLoader(anuga, batch_size=2, shuffle=False)))

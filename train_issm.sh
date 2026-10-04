@@ -10,6 +10,16 @@ MODEL_CONFIG="${MODEL_CONFIG:-configs/model_node2.yaml}"
 EXTRA_CONFIGS="${EXTRA_CONFIGS:-}"
 TRAIN_ARGS="${TRAIN_ARGS:-}"
 BASE_CONFIG="${BASE_CONFIG:-configs/ISSM_History_Scan/base_ISSM_history_1.yaml}"
+# A paper-matched base already defines its dataset and evaluation protocol.
+# An explicitly empty DATASET_CONFIG also skips the dataset overlay.
+if [[ -z "${DATASET_CONFIG+x}" ]]; then
+  if [[ "${BASE_CONFIG##*/}" == "issm_paper_matched.yaml" ]]; then
+    DATASET_CONFIG=""
+  else
+    DATASET_CONFIG="configs/issm.yaml"
+  fi
+fi
+LOADER_CONFIG="${LOADER_CONFIG-}"
 PYTHON_BIN="${PYTHON_BIN:-$(command -v python)}"
 STAMP="${STAMP:-$(date -u +%Y%m%d_%H%M%S)}"
 RUN_NAME="${RUN_NAME:-issm_node2_${STAMP}}"
@@ -26,7 +36,9 @@ run_training() {
     echo "[$(date -u +%F' '%T)] run_name=$RUN_NAME"
     echo "[$(date -u +%F' '%T)] python_bin=$PYTHON_BIN"
     echo "[$(date -u +%F' '%T)] base_config=$BASE_CONFIG"
+    echo "[$(date -u +%F' '%T)] dataset_config=${DATASET_CONFIG:-<none>}"
     echo "[$(date -u +%F' '%T)] model_config=$MODEL_CONFIG"
+    echo "[$(date -u +%F' '%T)] loader_config=${LOADER_CONFIG:-<none>}"
     echo "[$(date -u +%F' '%T)] extra_configs=${EXTRA_CONFIGS:-<none>}"
     echo "[$(date -u +%F' '%T)] train_args=${TRAIN_ARGS:-<none>}"
     echo "[$(date -u +%F' '%T)] log_file=$LOG_FILE"
@@ -40,9 +52,14 @@ run_training() {
     --nproc_per_node="$NPROC"
     scripts/train.py
     --config "$BASE_CONFIG"
-    --config configs/issm.yaml
-    --config "$MODEL_CONFIG"
   )
+  if [[ -n "$DATASET_CONFIG" ]]; then
+    train_cmd+=(--config "$DATASET_CONFIG")
+  fi
+  train_cmd+=(--config "$MODEL_CONFIG")
+  if [[ -n "$LOADER_CONFIG" ]]; then
+    train_cmd+=(--config "$LOADER_CONFIG")
+  fi
   for extra_config in $EXTRA_CONFIGS; do
     train_cmd+=(--config "$extra_config")
   done
@@ -71,7 +88,7 @@ if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
   exit 1
 fi
 
-export PROJECT_ROOT SESSION_NAME NPROC MODEL_CONFIG EXTRA_CONFIGS TRAIN_ARGS BASE_CONFIG PYTHON_BIN STAMP RUN_NAME LOG_DIR LOG_FILE
+export PROJECT_ROOT SESSION_NAME NPROC DATASET_CONFIG MODEL_CONFIG LOADER_CONFIG EXTRA_CONFIGS TRAIN_ARGS BASE_CONFIG PYTHON_BIN STAMP RUN_NAME LOG_DIR LOG_FILE
 tmux new-session -d -s "$SESSION_NAME" "cd '$PROJECT_ROOT' && bash '$PROJECT_ROOT/train_issm.sh' --inside-tmux"
 
 echo "Started tmux session: $SESSION_NAME"

@@ -1,5 +1,11 @@
 # NODE2 Upgrade V2
 
+> **Historical archive — not the current runtime.** This document describes the
+> removed structured V2 experiment. Its model options, paths, and commands are
+> retained for historical reference and are not supported by the active NODE2
+> pipeline. Archived material is in `legacy-v2/`; use [Upgrade V1](upgrade_v1.md),
+> [current launch commands](../handbook.md), and [temporal consistency](temporal_consistency.md) for new runs.
+
 ## Overview
 
 The current live NODE2 is already the Upgrade v1 model. It keeps the shared

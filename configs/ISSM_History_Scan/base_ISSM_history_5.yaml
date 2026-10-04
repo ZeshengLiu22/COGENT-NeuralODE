@@ -77,7 +77,7 @@ training:
   min_lr: 0.0
   grad_accum_steps: 1
   max_grad_norm: 1.0
-  grad_clip_norm_dtype: fp64
+  grad_clip_norm_dtype: fp32
   loss_scale_factor: 100.0
   train_horizon_mode: biased_long_horizon
   train_horizon_min: 24

@@ -24,9 +24,10 @@ RUN_NAME="${RUN_NAME:-cercat_anuga_node2_history${HISTORY_LEN}_${RUN_VARIANT}_${
 LOG_FILE="${LOG_FILE:-${PROJECT_ROOT}/logs/${RUN_NAME}.log}"
 
 BASE_CONFIG="${BASE_CONFIG:-configs/ANUGA_History_Scan/base_ANUGA_history${HISTORY_LEN}.yaml}"
-DATASET_CONFIG="${DATASET_CONFIG:-configs/anuga.yaml}"
+DATASET_CONFIG="${DATASET_CONFIG-configs/anuga.yaml}"
 MODEL_CONFIG="${MODEL_CONFIG:-configs/model_node2.yaml}"
-EXTRA_CONFIGS="${EXTRA_CONFIGS:-configs/ANUGA_History_Scan/anuga_fast_loader.yaml}"
+LOADER_CONFIG="${LOADER_CONFIG-configs/ANUGA_History_Scan/anuga_fast_loader.yaml}"
+EXTRA_CONFIGS="${EXTRA_CONFIGS:-}"
 TRAIN_ARGS="${TRAIN_ARGS:-}"
 
 MASTER_ADDR="${MASTER_ADDR:-127.0.0.1}"
@@ -57,6 +58,7 @@ export TORCH_DISTRIBUTED_DEBUG="${TORCH_DISTRIBUTED_DEBUG:-OFF}"
   echo "[$(date -u +%F' '%T)] base_config=${BASE_CONFIG}"
   echo "[$(date -u +%F' '%T)] dataset_config=${DATASET_CONFIG}"
   echo "[$(date -u +%F' '%T)] model_config=${MODEL_CONFIG}"
+  echo "[$(date -u +%F' '%T)] loader_config=${LOADER_CONFIG:-<none>}"
   echo "[$(date -u +%F' '%T)] extra_configs=${EXTRA_CONFIGS:-<none>}"
   echo "[$(date -u +%F' '%T)] train_args=${TRAIN_ARGS:-<none>}"
   echo "[$(date -u +%F' '%T)] log_file=${LOG_FILE}"
@@ -71,9 +73,14 @@ train_cmd=(
   --master_port="${MASTER_PORT}"
   scripts/train.py
   --config "${BASE_CONFIG}"
-  --config "${DATASET_CONFIG}"
-  --config "${MODEL_CONFIG}"
 )
+if [[ -n "${DATASET_CONFIG}" ]]; then
+  train_cmd+=(--config "${DATASET_CONFIG}")
+fi
+train_cmd+=(--config "${MODEL_CONFIG}")
+if [[ -n "${LOADER_CONFIG}" ]]; then
+  train_cmd+=(--config "${LOADER_CONFIG}")
+fi
 for extra_config in ${EXTRA_CONFIGS}; do
   train_cmd+=(--config "${extra_config}")
 done

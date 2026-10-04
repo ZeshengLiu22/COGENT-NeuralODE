@@ -1,5 +1,11 @@
 # NODE2 Network Architecture
 
+> **Historical architecture snapshot.** The reference run and flags below
+> predate the foundation repairs and are not current runtime instructions.
+> See [Upgrade V1](upgrade_v1.md) for the supported history selector and fixed
+> relative-time scale, and [the foundation report](foundation_correctness_repair.md)
+> for current input and evaluation protocols.
+
 Direct architecture reference for the implemented NODE2 model. This is written
 to be easy to convert into a network plot. A TikZ/LaTeX version is saved in
 `data_flow.tex`.

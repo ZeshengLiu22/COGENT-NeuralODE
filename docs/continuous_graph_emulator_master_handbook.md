@@ -1,5 +1,12 @@
 # Continuous-Time Graph Emulator Master Handbook
 
+> **Historical design reference.** This handbook includes proposed or removed
+> NODE1/NCDE1 paths and earlier normalization, training, and evaluation rules.
+> Those sections do not describe the current runtime. The active model is NODE2;
+> use the [foundation repair report](foundation_correctness_repair.md),
+> [current shell handbook](../handbook.md), [Upgrade V1](upgrade_v1.md), and
+> [temporal-consistency guide](temporal_consistency.md) for current behavior.
+
 **Project scope.** This master handbook consolidates the design decisions for a unified continuous-time graph learning framework spanning three scientific emulator datasets:
 
 - **ANUGA flood simulation**

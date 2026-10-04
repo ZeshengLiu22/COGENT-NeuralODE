@@ -78,7 +78,9 @@ def validate_temporal_consistency_config(tc_cfg: dict) -> None:
     penalty = str(tc_cfg.get("penalty", "mse")).lower()
     if penalty not in {"mse", "rmse"}:
         raise ValueError(f"Unsupported temporal consistency penalty: {penalty}")
-    _nonnegative_number(tc_cfg.get("rmse_eps", 1e-8), "temporal_consistency.rmse_eps")
+    rmse_eps = _nonnegative_number(tc_cfg.get("rmse_eps", 1e-8), "temporal_consistency.rmse_eps")
+    if penalty == "rmse" and rmse_eps == 0:
+        raise ValueError("temporal_consistency.rmse_eps must be positive for RMSE")
 
     if mode == "random_pair_increment":
         pair_cfg = _config_section(tc_cfg, "random_pair")
@@ -128,7 +130,11 @@ def _temporal_penalty(error: torch.Tensor, kind: str = "mse", eps: float = 1e-8)
     if kind == "mse":
         return mse
     if kind == "rmse":
-        return torch.sqrt(mse + eps)
+        eps = _nonnegative_number(eps, "rmse_eps")
+        if eps == 0:
+            raise ValueError("rmse_eps must be positive for RMSE")
+        offset = mse.new_tensor(eps)
+        return torch.sqrt(mse + offset) - torch.sqrt(offset)
     raise ValueError(f"Unsupported temporal consistency penalty: {kind}")
 
 
@@ -184,11 +190,19 @@ def temporal_random_pair_increment(
     max_lag: int | None = None,
     penalty: str = "mse",
     rmse_eps: float = 1e-8,
+    *,
+    node_batch: torch.Tensor | None = None,
+    generator: torch.Generator | None = None,
 ) -> torch.Tensor:
     """Match sampled integrated changes without dividing by elapsed time.
 
-    Sample without replacement, independently on each DDP rank using its
-    existing torch RNG. Hyperparameters are validated at trainer startup.
+    Each graph samples independently without replacement; its nodes share the
+    selected pairs. ``node_batch`` maps nodes to graphs, or all nodes belong to
+    one graph when omitted. The penalty still averages over node elements.
+
+    Pass a generator on the prediction device to isolate sampling from model
+    randomness. Direct calls without one use the standard global torch RNG.
+    Hyperparameters are validated at trainer startup.
     """
     _check_temporal_shapes(y_pred, y_true)
     k = y_pred.shape[1]
@@ -203,11 +217,36 @@ def temporal_random_pair_increment(
     num_candidates = pairs.shape[1]
     if num_candidates == 0:
         return _zero_loss(y_pred)
-    perm = torch.randperm(num_candidates, device=y_pred.device)
-    selected = pairs[:, perm[:min(num_pairs, num_candidates)]]
-    i, j = selected[0], selected[1]
-    pred_delta = y_pred[:, j, :] - y_pred[:, i, :]
-    true_delta = y_true[:, j, :] - y_true[:, i, :]
+    if node_batch is None:
+        node_graph = torch.zeros(y_pred.shape[0], device=y_pred.device, dtype=torch.long)
+        num_graphs = 1
+    else:
+        if (
+            not isinstance(node_batch, torch.Tensor)
+            or node_batch.ndim != 1
+            or node_batch.numel() != y_pred.shape[0]
+            or node_batch.dtype not in (torch.uint8, torch.int8, torch.int16, torch.int32, torch.int64)
+        ):
+            raise ValueError("node_batch must be an integer tensor of shape [nodes]")
+        if torch.any(node_batch < 0):
+            raise ValueError("node_batch graph IDs must be nonnegative")
+        graph_ids, node_graph = torch.unique(
+            node_batch.to(device=y_pred.device, dtype=torch.long), return_inverse=True
+        )
+        num_graphs = graph_ids.numel()
+
+    # Independent random priorities are a vectorized permutation per graph.
+    # Top-k selects distinct candidates, including when all are requested.
+    scores = torch.rand(
+        (num_graphs, num_candidates), device=y_pred.device, generator=generator,
+        dtype=torch.float32,
+    )
+    selected = scores.topk(min(num_pairs, num_candidates), dim=1).indices
+    i = pairs[0, selected][node_graph]
+    j = pairs[1, selected][node_graph]
+    nodes = torch.arange(y_pred.shape[0], device=y_pred.device)[:, None]
+    pred_delta = y_pred[nodes, j, :] - y_pred[nodes, i, :]
+    true_delta = y_true[nodes, j, :] - y_true[nodes, i, :]
     return _temporal_penalty(pred_delta - true_delta, penalty, rmse_eps)
 
 
@@ -279,6 +318,9 @@ def compute_temporal_consistency(
     y_true: torch.Tensor,
     t_future: torch.Tensor | None,
     tc_cfg: dict,
+    *,
+    node_batch: torch.Tensor | None = None,
+    generator: torch.Generator | None = None,
 ) -> dict[str, torch.Tensor]:
     """Dispatch a validated TC subsection to one formulation.
 
@@ -310,6 +352,8 @@ def compute_temporal_consistency(
             max_lag=pair_cfg.get("max_lag"),
             penalty=penalty,
             rmse_eps=rmse_eps,
+            node_batch=node_batch,
+            generator=generator,
         )
     if mode in _RATE_MODES:
         rate_cfg = tc_cfg.get("rate", {})
