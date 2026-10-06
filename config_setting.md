@@ -47,39 +47,42 @@ All indices are zero-based, slice stops exclusive.
 | K | `dataset.future_len` | Maximum stored training future |
 | S | `evaluation.known_steps` | Absolute first predicted state in rollout evaluation |
 | B | `dataset.train_series_per_scenario_per_epoch` | Selected training series per simulation per epoch |
-| k_eff | Sampled in trainer | Actual complete-series training prediction length |
+| $k_{\mathrm{eff}}$ | Sampled in trainer | Actual complete-series training prediction length |
 
 At training anchor t:
 
-```text
-history = x[t-H+1:t+1]
-maximum future = x[t+1:t+K+1]
-natural anchors = H-1, ..., T-K-1
-N_natural = T-H-K+1   # stride 1 and T >= H+K
-```
+$$
+\begin{aligned}
+\mathrm{history} &= x[t-H+1:t+1],\\
+\mathrm{maximum\ future} &= x[t+1:t+K+1],\\
+\mathrm{natural\ anchors} &= H-1,\ldots,T-K-1,\\
+N_{\mathrm{natural}} &= T-H-K+1
+\quad\text{(stride 1 and }T\ge H+K\text{)}.
+\end{aligned}
+$$
 
 H, K, and stride must be positive. Natural anchors vary with H/K. B is a
 positive integer in the formal protocols; null retains all natural anchors
 for an explicitly ad-hoc configuration. There are no retired sampling-key
 aliases. A positive B with no legal anchors is an error.
 
-For N≥B, select exactly B distinct anchors without replacement. For 0<N<B,
-include all N once, sample B−N extras with replacement from that same scenario,
+For $N\ge B$, select exactly B distinct anchors without replacement. For $0<N<B$,
+include all N once, sample $B-N$ extras with replacement from that same scenario,
 and shuffle its B entries. Seed plus epoch determines selection; horizons
 are sampled independently later.
 
 One selected training series is identified by a simulation/scenario and a
 natural history anchor. Its actual prediction length is determined later by
-the independently sampled k_eff. Fixing B does not fix unique-anchor count,
-target-timestep count, ending time, or k_eff.
+the independently sampled $k_{\mathrm{eff}}$. Fixing B does not fix unique-anchor count,
+target-timestep count, ending time, or $k_{\mathrm{eff}}$.
 
 | Protocol | T | Canonical H/K/S | B | Train scenarios | Series per epoch |
 | --- | ---: | --- | ---: | ---: | ---: |
 | ISSM | 240 | 1/180/60 | 60 | 28 | 1,680 |
 | ANUGA | 73 | 1/64/8 | 9 | 12 | 108 |
 
-Budgets derive from canonical natural counts: 240−1−180+1=60 and
-73−1−64+1=9. For ANUGA H4/K64, legal anchors 3–8 give six unique plus three
+Budgets derive from canonical natural counts: $240-1-180+1=60$ and
+$73-1-64+1=9$. For ANUGA H4/K64, legal anchors 3–8 give six unique plus three
 extra draws. H8/K64 gives anchors 7–8 once each plus seven extras.
 All formal H/K variants keep the same per-dataset epoch length, divisible
 by four for the current DDP runs.
@@ -89,7 +92,7 @@ not. Evaluation still supports scenario metadata, trajectory iteration,
 normalization, and rollout construction. Dataset length for these datasets
 is zero training series; use `len(scenario_infos)` for scenario count.
 
-## k_eff and curriculum
+## $k_{\mathrm{eff}}$ and curriculum
 
 | Setting | Current meaning |
 | --- | --- |
@@ -100,18 +103,18 @@ is zero training series; use `len(scenario_infos)` for scenario count.
 | `training.train_horizon_curriculum.epochs` | Default 120 epochs |
 | `training.train_horizon_curriculum.warmup_fractions` | Default [0.40,0.55,0.70,0.85] |
 
-Require 1≤minimum≤target≤K. ANUGA K8 is valid with minimum 8.
+Require $1\le\mathrm{minimum}\le\mathrm{target}\le K$. ANUGA K8 is valid with minimum 8.
 The epoch cap uses the listed staircase fractions, round-half-up, and clamping;
 after the curriculum it equals the target. See [exact equations](docs/upgrade_v1.1.md).
 
-Rank 0 samples k_eff once per optimizer/accumulation group and broadcasts it.
+Rank 0 samples $k_{\mathrm{eff}}$ once per optimizer/accumulation group and broadcasts it.
 The trainer truncates forcing, targets, times, and future metadata, then NODE2
-predicts every state 1…k_eff. B sampling does not change this logic. Optimizer
+predicts every state $1,\ldots,k_{\mathrm{eff}}$. B sampling does not change this logic. Optimizer
 and cosine scheduler remain epoch-based.
 
 ## Rollout start and time scale
 
-Formal history is `x[S-H:S]` and prediction is `x[S:T]`, requiring H≤S<T.
+Formal history is `x[S-H:S]` and prediction is `x[S:T]`, requiring $H\le S<T$.
 Validation, best-checkpoint selection, final test, and standalone inference
 share this rule. K30/known60/T240 predicts 180 future states; K does not cap
 rollout evaluation.
@@ -125,7 +128,7 @@ rollout evaluation.
 
 Solver time is relative to the current anchor, divided by the trajectory's
 median positive timestep. The optional vector-field feature is
-r(t)=t/`model.relative_time_scale` with fixed scale 180 ISSM / 65 ANUGA.
+$r(t)=t/\texttt{model.relative\_time\_scale}$ with fixed scale 180 ISSM / 65 ANUGA.
 That scale is independent of H, K, S, and the inference endpoint. It is not
 clamped. Disabling the feature is one architecture axis, not a time-unit change.
 
@@ -173,12 +176,12 @@ Rollout-start files are ISSM known60/90/120 and ANUGA known8.
 TC files tc0–tc5 preserve the corrected implementation documented in
 [temporal consistency](docs/temporal_consistency.md).
 
-1. History: full architecture, canonical K/S, TC0; select dataset-specific H*.
-2. Architecture: selected H*, canonical K/S, TC0; all 16 combinations.
-3. K: selected H*, full architecture, canonical S, TC0; dataset K scan.
-4. TC: selected H*, full architecture, canonical K/S; TC0–TC5.
+1. History: full architecture, canonical K/S, TC0; select dataset-specific $H^*$.
+2. Architecture: selected $H^*$, canonical K/S, TC0; all 16 combinations.
+3. K: selected $H^*$, full architecture, canonical S, TC0; dataset K scan.
+4. TC: selected $H^*$, full architecture, canonical K/S; TC0–TC5.
 
-Only H* propagates. The architecture and K winners do not define later phases.
+Only $H^*$ propagates. The architecture and K winners do not define later phases.
 All later-phase standalone launcher files require explicit selected-history
 edits after Phase 1; no H is guessed. ISSM start robustness is evaluation-only
 using one final checkpoint, with no retraining/reselection.

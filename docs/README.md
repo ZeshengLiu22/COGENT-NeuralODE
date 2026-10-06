@@ -7,15 +7,15 @@ ANUGA experiment design. Current code takes precedence over historical notes.
 | --- | --- |
 | [continuous_graph_emulator_master_handbook.md](continuous_graph_emulator_master_handbook.md) | Current end-to-end technical reference: adapters, normalization, sampling, model, losses, rollout evaluation, artifacts, and postprocessing |
 | [upgrade_v1.md](upgrade_v1.md) | Current NODE2 architecture equations and the 16-combination architecture ablation |
-| [upgrade_v1.1.md](upgrade_v1.1.md) | Current horizon curriculum and independent k_eff training design |
+| [upgrade_v1.1.md](upgrade_v1.1.md) | Current horizon curriculum and independent $k_{\mathrm{eff}}$ training design |
 | [temporal_consistency.md](temporal_consistency.md) | Current TC0–TC5 implementation, equations, averaging dimensions, and RNG |
 | [config_evaluation_refactor_20261004.md](config_evaluation_refactor_20261004.md) | H/K/S and rollout-only refactor record, including the final series-budget and launcher cleanup |
 | [Operating handbook](../handbook.md) | Explicit formal phases, launch commands, evaluation, and postprocessing |
 | [Configuration reference](../config_setting.md) | Layer ownership, dataset-scoped overlays, field meanings, and evaluation authority |
 
 H is history length, K is maximum training future, and S is rollout start.
-B fixes each simulation's epoch series count; k_eff remains independently
-sampled. Only selected H* propagates from Phase 1 into Phases 2–4.
+B fixes each simulation's epoch series count; $k_{\mathrm{eff}}$ remains independently
+sampled. Only selected $H^*$ propagates from Phase 1 into Phases 2–4.
 
 `old-files/` and `legacy-scripts/` are historical only.
 Their configurations, launcher paths, and deferred-model designs are not

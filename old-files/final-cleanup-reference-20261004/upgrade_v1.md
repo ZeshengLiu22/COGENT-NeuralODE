@@ -8,13 +8,15 @@ objectives are described in [temporal consistency](temporal_consistency.md).
 
 Original NODE2 was a latent-space controlled graph Neural ODE:
 
-```text
-z0      = InitMLP([hist_context, last_state, static_embed])
-dz/dt   = f_theta(z(t), u(t), s, G)
-y_hat(t)= DecMLP(z(t))
-```
+$$
+\begin{aligned}
+z_0 &= \operatorname{InitMLP}([\mathrm{hist\_context}, \mathrm{last\_state}, \mathrm{static\_embed}])\\
+\frac{dz}{dt} &= f_\theta(z(t), u(t), s, G)\\
+\hat y(t) &= \operatorname{DecMLP}(z(t))
+\end{aligned}
+$$
 
-where `u(t)` is interpolated future forcing, `s` is the static node embedding, and `G` is the graph.
+where $u(t)$ is interpolated future forcing, `s` is the static node embedding, and `G` is the graph.
 
 Upgrade v1 keeps NODE2 as an ODE. Rollout MSE remains the state objective; the current trainer can also add one configurable temporal-consistency term. The four architectural upgrades are:
 
@@ -29,21 +31,25 @@ The upgraded model config enables all four options. Dataset/protocol scales come
 
 Original:
 
-```text
-z0       = InitMLP([hist_context, last_state, static_embed])
-dz/dt    = f_theta(z(t), u(t), s, G)
-y_hat(t) = DecMLP(z(t))
-```
+$$
+\begin{aligned}
+z_0 &= \operatorname{InitMLP}([\mathrm{hist\_context}, \mathrm{last\_state}, \mathrm{static\_embed}])\\
+\frac{dz}{dt} &= f_\theta(z(t), u(t), s, G)\\
+\hat y(t) &= \operatorname{DecMLP}(z(t))
+\end{aligned}
+$$
 
 Upgraded:
 
-```text
-hist_context = LSTM(step_embeds) or Transformer(step_embeds)
-z0           = InitMLP([hist_context, last_state, static_embed])
-dz/dt        = f_theta(z(t), u(t), s, hist_context, rel_t, G)
-delta_y(t)   = DecMLP(z(t))
-y_hat(t)     = last_state + delta_y(t)
-```
+$$
+\begin{aligned}
+\mathrm{hist\_context} &= \operatorname{LSTM}(\mathrm{step\_embeds})\quad\text{or}\quad \operatorname{Transformer}(\mathrm{step\_embeds})\\
+z_0 &= \operatorname{InitMLP}([\mathrm{hist\_context}, \mathrm{last\_state}, \mathrm{static\_embed}])\\
+\frac{dz}{dt} &= f_\theta(z(t), u(t), s, \mathrm{hist\_context}, \mathrm{rel\_t}, G)\\
+\Delta y(t) &= \operatorname{DecMLP}(z(t))\\
+\hat y(t) &= \mathrm{last\_state} + \Delta y(t)
+\end{aligned}
+$$
 
 Each new term is controlled by a flag. Disabling all upgrade flags restores the old NODE2 behavior as closely as possible:
 
@@ -65,10 +71,12 @@ The old decoder predicted the full future state directly from latent states. For
 
 Mathematical idea:
 
-```text
-delta_y(t) = DecMLP(z(t))
-y_hat(t)  = y_last + delta_y(t)
-```
+$$
+\begin{aligned}
+\Delta y(t) &= \operatorname{DecMLP}(z(t))\\
+\hat y(t) &= y_{\mathrm{last}} + \Delta y(t)
+\end{aligned}
+$$
 
 Implementation details:
 
@@ -108,15 +116,19 @@ Original NODE2 used history only to initialize `z0`. After integration started, 
 
 Mathematical idea:
 
-```text
-dz/dt = f_theta(z(t), u(t), s, c_hist, G)
-```
+$$
+\begin{aligned}
+\frac{dz}{dt} &= f_\theta(z(t), u(t), s, c_{\mathrm{hist}}, G)
+\end{aligned}
+$$
 
 or, when relative time is also enabled:
 
-```text
-dz/dt = f_theta(z(t), u(t), s, c_hist, rel_t, G)
-```
+$$
+\begin{aligned}
+\frac{dz}{dt} &= f_\theta(z(t), u(t), s, c_{\mathrm{hist}}, \mathrm{rel\_t}, G)
+\end{aligned}
+$$
 
 Implementation details:
 
@@ -153,10 +165,12 @@ The old `HistoryEncoder` used a node-wise LSTM over the per-step GNN embeddings.
 
 Mathematical idea:
 
-```text
-h_i^tau = GNN([state_i^tau, force_i^tau, static_embed_i], G)
-c_i     = Transformer([h_i^1, ..., h_i^H])
-```
+$$
+\begin{aligned}
+h_i^\tau &= \operatorname{GNN}([\mathrm{state}_i^\tau, \mathrm{force}_i^\tau, \mathrm{static\_embed}_i], G)\\
+c_i &= \operatorname{Transformer}([h_i^1, \ldots, h_i^H])
+\end{aligned}
+$$
 
 Implementation details:
 
@@ -200,7 +214,7 @@ Expected benefit:
 Temporal self-attention can model nonlocal dependencies across the known history window more directly than a purely recurrent summary.
 
 Possible downside:
-Compute and memory increase with history length because temporal attention has O(H^2) attention cost per node.
+Compute and memory increase with history length because temporal attention has $O(H^2)$ attention cost per node.
 Chunking can add some launch overhead, but it lowers peak memory and avoids CUDA kernel configuration failures on large meshes.
 
 ### 4. Explicit Relative Time
@@ -210,10 +224,12 @@ Original NODE2 received forcing evaluated at continuous solver time, but the vec
 
 Mathematical idea:
 
-```text
-rel_t = t / relative_time_scale
-dz/dt = f_theta(z(t), u(t), s, c_hist, rel_t, G)
-```
+$$
+\begin{aligned}
+\mathrm{rel\_t} &= t / \mathrm{relative\_time\_scale}\\
+\frac{dz}{dt} &= f_\theta(z(t), u(t), s, c_{\mathrm{hist}}, \mathrm{rel\_t}, G)
+\end{aligned}
+$$
 
 Implementation details:
 

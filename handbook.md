@@ -10,29 +10,29 @@ the active technical references.
 
 | Quantity | Meaning |
 | --- | --- |
-| H = `dataset.history_len` | True context states immediately before prediction |
-| K = `dataset.future_len` | Maximum stored training future block |
-| k_eff ≤ K | Independently sampled actual training prediction length |
-| S = `evaluation.known_steps` | Absolute index of first predicted state |
-| B = `dataset.train_series_per_scenario_per_epoch` | Selected training series per scenario per epoch |
+| $H=\texttt{dataset.history\_len}$ | True context states immediately before prediction |
+| $K=\texttt{dataset.future\_len}$ | Maximum stored training future block |
+| $k_{\mathrm{eff}}\le K$ | Independently sampled actual training prediction length |
+| $S=\texttt{evaluation.known\_steps}$ | Absolute index of first predicted state |
+| $B=\texttt{dataset.train\_series\_per\_scenario\_per\_epoch}$ | Selected training series per scenario per epoch |
 
 A training anchor t supplies `x[t-H+1:t+1]` and maximum future
-`x[t+1:t+K+1]`. The model predicts the complete first k_eff future states.
+`x[t+1:t+K+1]`. The model predicts the complete first $k_{\mathrm{eff}}$ future states.
 Each scenario uses natural legal anchors; B anchors are sampled without
 replacement when enough exist. Otherwise every legal anchor appears once,
 with replacement only for extra draws needed to reach B, followed by shuffling.
 
 Formal evaluation uses history `x[S-H:S]` and predicts `x[S:T]`.
-Require H≤S<T. K does not cap inference: ISSM K30 still predicts 180 steps
+Require $H\le S<T$. K does not cap inference: ISSM K30 still predicts 180 steps
 from known60 on T240. Checkpoint H/K remain authoritative at inference.
 
-| Protocol | H control | Canonical K | S | B | Train scenarios | Series/epoch | Time scale | Batch/rank | Min k_eff | Loss scale |
+| Protocol | H control | Canonical K | S | B | Train scenarios | Series/epoch | Time scale | Batch/rank | Min $k_{\mathrm{eff}}$ | Loss scale |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | ISSM | 1 | 180 | 60 | 60 | 28 | 1,680 | 180 | 8 | 24 | 100 |
 | ANUGA | 1 | 64 | 8 | 9 | 12 | 108 | 65 | 1 | 8 | 1 |
 
-B preserves the canonical H1 natural exposure: 240−1−180+1=60 and
-73−1−64+1=9. It does not fix k_eff or total supervised timestep count.
+B preserves the canonical H1 natural exposure: $240-1-180+1=60$ and
+$73-1-64+1=9$. It does not fix $k_{\mathrm{eff}}$ or total supervised timestep count.
 The four-GPU dataset totals require no DDP padding.
 
 Full architecture means Transformer, residual decoder ON, ODE history context
@@ -81,20 +81,20 @@ avoiding repeated MAT/NPZ reads and preprocessing for each training series.
 
 ## The four formal phases
 
-Only selected history H* propagates from Phase 1. Architecture and K winners
+Only selected history $H^*$ propagates from Phase 1. Architecture and K winners
 do not determine subsequent phases.
 
 | Phase | H | Architecture | ISSM K / S | ANUGA K / S | TC |
 | --- | --- | --- | --- | --- | --- |
 | 01_history | 1…8 | Full | 180 / 60 | 64 / 8 | Off |
-| 02_architecture | Selected dataset H* | All 16 combinations | 180 / 60 | 64 / 8 | Off |
-| 03_training_horizon | Selected dataset H* | Full | K scan / 60 | K scan / 8 | Off |
-| 04_temporal_consistency | Selected dataset H* | Full | 180 / 60 | 64 / 8 | TC0…TC5 |
+| 02_architecture | Selected dataset $H^*$ | All 16 combinations | 180 / 60 | 64 / 8 | Off |
+| 03_training_horizon | Selected dataset $H^*$ | Full | K scan / 60 | K scan / 8 | Off |
+| 04_temporal_consistency | Selected dataset $H^*$ | Full | 180 / 60 | 64 / 8 | TC0…TC5 |
 
 ISSM K scan: 30,45,60,75,90,120,150,180.
 ANUGA K scan: 8,16,24,32,40,48,56,64.
 
-Select H* using rollout validation from the history phase. Each later-phase
+Select $H^*$ using rollout validation from the history phase. Each later-phase
 launcher contains `HISTORY_CONFIG="__SET_SELECTED_HISTORY_AFTER_PHASE1__"`
 and exits until edited to the selected dataset-specific history YAML. Update
 each file explicitly after selection; no hidden shared selection file supplies
@@ -271,7 +271,7 @@ sbatch tests/smoke_cuda_anuga.sh
 ```
 
 These are validation jobs, not formal results. They exercise real canonical
-data/configuration, fixed B, four-rank training with sampled k_eff, rollout
+data/configuration, fixed B, four-rank training with sampled $k_{\mathrm{eff}}$, rollout
 validation, best checkpoint, standalone evaluation, complete NPZ, and
 postprocessing. Their bounded optimizer run does not constitute a formal
 epoch or accuracy result. CUDA training is validated only when the actual jobs

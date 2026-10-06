@@ -3,9 +3,9 @@
 NODE2 always retains its rollout state MSE. A run can add exactly one configured
 temporal-consistency (TC) mode to the same forward prediction:
 
-\[
+$$
 L_{\mathrm{total}} = L_{\mathrm{state}} + \lambda_{\mathrm{TC}} L_{\mathrm{TC}}.
-\]
+$$
 
 There is no automatic magnitude matching or EMA balancing. TC and state loss
 use the same normalized, `training.loss_scale_factor`-scaled prediction and
@@ -55,7 +55,7 @@ default to 1.0. Unused mode subsections from earlier overlays have no effect.
 
 ## Per-graph random pairs and RNG isolation
 
-T2 samples eligible pairs `i < j` independently for each graph/sample in a PyG
+T2 samples eligible pairs $i<j$ independently for each graph/sample in a PyG
 microbatch. All nodes in one graph share its selected pair set; different
 graphs make independent draws and may coincidentally select the same pairs.
 Pairs are sampled without replacement within each graph. If fewer eligible
@@ -77,19 +77,19 @@ a supplied generator use the global Torch RNG. The trainer supplies both.
 
 Rate and curvature use the solver's existing `t_future` coordinates directly:
 
-\[
+$$
 R_t^{(d)} = \frac{Y_{t+d}-Y_t}{\tau_{t+d}-\tau_t}, \qquad
 A_t = \frac{2}{\tau_{t+1}-\tau_{t-1}}
 \left(\frac{Y_{t+1}-Y_t}{\tau_{t+1}-\tau_t}
 -\frac{Y_t-Y_{t-1}}{\tau_t-\tau_{t-1}}\right).
-\]
+$$
 
 Each component penalizes the difference between predicted and true increments,
 rates, or curvature. Curvature matching does not drive the predicted curvature
 itself to zero. A time grid may have shape `[K]`, `[1,K]`, or `[B,K]`; batched
 rows must agree and times must be finite and strictly increasing.
 
-Lags `d >= K` are skipped, and remaining lag weights are renormalized. Missing
+Lags $d\ge K$ are skipped, and remaining lag weights are renormalized. Missing
 terms, including increments at K1 and curvature below K3, return differentiable
 zero. Thus curriculum truncation can shorten the supervised horizon without
 requiring new temporal configs.
@@ -99,10 +99,10 @@ requiring new temporal configs.
 For component error `e`, MSE is `mean(e ** 2)`. Optional RMSE uses the shifted,
 smoothed expression
 
-\[
+$$
 P_{\mathrm{rmse}}(e) = \sqrt{\operatorname{mean}(e^2)+\epsilon}
 - \sqrt{\epsilon}, \qquad \epsilon > 0.
-\]
+$$
 
 `rmse_eps` must be finite and strictly positive when `penalty: rmse` (MSE
 allows zero because it does not use the epsilon). This expression is zero at

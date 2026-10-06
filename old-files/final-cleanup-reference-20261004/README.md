@@ -4,7 +4,8 @@ Historical documentation retained for provenance/reference only.
 Use the reconciled current documents under `docs/` for new experiments.
 These copies contain superseded settings and must not be used as active instructions.
 
-The files are exact Git snapshots from commit `b3c761b`:
+The files originate from Git snapshots at commit `b3c761b`; equation
+formatting has been normalized to `$...$` / `$$...$$`:
 
 - `continuous_graph_emulator_master_handbook.md`, `upgrade_v1.md`, and `upgrade_v1.1.md`: recovered from `old-files/config-evaluation-history-20261004/docs/`.
 - `temporal_consistency.md`: recovered from the then-active `docs/temporal_consistency.md`.

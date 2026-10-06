@@ -10,9 +10,9 @@ The [operating handbook](../handbook.md) gives launch commands; the
 ## 1. Scientific problem and active pipeline
 
 A simulation is a trajectory on a fixed graph
-\(\mathcal G=(\mathcal V,\mathcal E)\). Node \(i\) has static features
-\(s_i^{raw}\), observed state \(y_i(q)\), and time-varying external forcing
-\(u_i(q)\). The task is to predict a complete future state series from a short
+$\mathcal G=(\mathcal V,\mathcal E)$. Node $i$ has static features
+$s_i^{raw}$, observed state $y_i(q)$, and time-varying external forcing
+$u_i(q)$. The task is to predict a complete future state series from a short
 observed history and known future forcing. Each model call initializes one
 latent trajectory and integrates it forward; decoded predictions are not fed
 back through the history encoder at every future snapshot.
@@ -39,7 +39,7 @@ raw simulation files
 NODE2 is the supported runtime model. Earlier NODE1/NCDE designs and deferred
 extensions are historical material, not selectable active model paths. Using
 `torchcde` to interpolate forcing does not turn NODE2 into an NCDE: the vector
-field uses forcing values \(u(t)\), not a learned derivative against \(du(t)\).
+field uses forcing values $u(t)$, not a learned derivative against $du(t)$.
 
 ## 2. Temporal notation and available information
 
@@ -47,37 +47,37 @@ All snapshot indices are zero-based; Python slice stops are exclusive.
 
 | Symbol | Meaning | Configuration or source |
 | --- | --- | --- |
-| \(T\) | Number of stored snapshots in one simulation | Trajectory |
-| \(H\) | Number of true historical states supplied to the encoder | `dataset.history_len` |
-| \(K\) | Maximum future block stored for a training series | `dataset.future_len` |
-| \(k_{eff}\) | Actual sampled prediction length in one optimization step | Horizon sampler, at most K |
-| \(S\) | Known-prefix length and absolute index of the first predicted state | `evaluation.known_steps` |
-| \(B\) | Number of selected training series per scenario per epoch | `dataset.train_series_per_scenario_per_epoch` |
+| $T$ | Number of stored snapshots in one simulation | Trajectory |
+| $H$ | Number of true historical states supplied to the encoder | `dataset.history_len` |
+| $K$ | Maximum future block stored for a training series | `dataset.future_len` |
+| $k_{eff}$ | Actual sampled prediction length in one optimization step | Horizon sampler, at most K |
+| $S$ | Known-prefix length and absolute index of the first predicted state | `evaluation.known_steps` |
+| $B$ | Number of selected training series per scenario per epoch | `dataset.train_series_per_scenario_per_epoch` |
 
-At a training history anchor \(a\), inputs and targets are
+At a training history anchor $a$, inputs and targets are
 
-\[
+$$
 Y_{hist}=Y[a-H+1:a+1],\qquad
 U_{hist}=U[a-H+1:a+1],
-\]
+$$
 
-\[
+$$
 U_{future}=U[a+1:a+K+1],\qquad
 Y_{future}=Y[a+1:a+K+1].
-\]
+$$
 
 The model consumes known future forcing; future state is a loss target and is
 never an input. After horizon sampling, training predicts every state
-\(\hat y(a+1),\ldots,\hat y(a+k_{eff})\). It is not endpoint-only regression.
+$\hat y(a+1),\ldots,\hat y(a+k_{eff})$. It is not endpoint-only regression.
 
 Formal validation, final test, and standalone inference use
 
-\[
+$$
 Y_{hist}=Y[S-H:S],\qquad
 Y_{target}=Y[S:T],\qquad H\le S<T.
-\]
+$$
 
-The last observed anchor is \(S-1\), and prediction length is \(T-S\).
+The last observed anchor is $S-1$, and prediction length is $T-S$.
 The known prefix can be longer than H; the encoder sees its final H states.
 For ISSM T240/H4/known60, history is 56–59 and prediction is 60–239.
 A model trained with K30 still predicts those 180 future states. H and K remain
@@ -117,7 +117,7 @@ The initial mask equals one where `floating[0] < 0`. The adapter does not expose
 future floating values. Coordinates construct auxiliary static edge data,
 not the four static model channels. MATLAB triangle indices are converted to
 zero-based graph indices; triangular connectivity produces deduplicated edges
-in both directions. Initial speed is \(\sqrt{v_x(0)^2+v_y(0)^2}\).
+in both directions. Initial speed is $\sqrt{v_x(0)^2+v_y(0)^2}$.
 
 The formal rate split uses remainder zero modulo 20 for validation and remainder
 ten for test; remaining rates train. The current formal files give 28/4/4
@@ -130,7 +130,7 @@ The configured dataset path ends in `ANUGA/simulation_data_merged`. Static
 channels are x, y, elevation, and friction. Forcing is rainfall in its supplied
 SI m/s units, broadcast over nodes. State channels are water depth, x momentum,
 and y momentum. Supplied `h` is used when available; otherwise depth is
-\(\max(stage-elevation,0)\). Stored connectivity is used directly or constructed
+$\max(stage-elevation,0)$. Stored connectivity is used directly or constructed
 from triangular volumes.
 
 The dataset YAML specifies a seeded random split with fractions 0.6/0.2/0.2
@@ -158,23 +158,23 @@ Dynamic statistics aggregate time and node elements; static statistics
 aggregate nodes. Centered float64 running statistics retain small real
 variances such as ANUGA rainfall.
 
-\[
+$$
 \tilde x_c=(x_c-\mu_c)/\sigma_c,\qquad
 x_c=\tilde x_c\sigma_c+\mu_c.
-\]
+$$
 
 Numerically constant channels use denominator one. Detection uses
-\(\sigma_c\le\epsilon_{64}|\mu_c|\), not a cutoff in physical units.
+$\sigma_c\le\epsilon_{64}|\mu_c|$, not a cutoff in physical units.
 `normalization.std_floor` remains serialized metadata and does not replace
 small nonzero standard deviations. Serialized statistics and model tensors
 are float32. Every evaluation restores the checkpoint normalizer.
 
 Solver coordinates are distinct from stored absolute indices and times. If
-\(q_j\) denotes adapter time and \(a\) the current anchor, the dataset constructs
+$q_j$ denotes adapter time and $a$ the current anchor, the dataset constructs
 
-\[
+$$
 \tau_j=\frac{q_j-q_a}{\operatorname{median}(q_{m+1}-q_m)}.
-\]
+$$
 
 The denominator uses positive spacings over the trajectory, so a uniform grid
 becomes history offsets ending at 0 and future offsets 1,2,… . It does not depend
@@ -186,12 +186,12 @@ align grids if their relative spacings differ.
 
 At stride 1, legal history anchors are
 
-\[
+$$
 \mathcal A(H,K,T)=\{H-1,H,\ldots,T-K-1\},\qquad
 N_{\mathrm{natural}}=T-H-K+1
-\]
+$$
 
-when \(T\ge H+K\). A shorter trajectory has no legal anchor. The formal
+when $T\ge H+K$. A shorter trajectory has no legal anchor. The formal
 protocols use stride 1. The generic stride option takes every `stride`th anchor
 from this natural range. Each H/K variant uses its own legal range; anchors
 are not restricted to an intersection with another variant.
@@ -204,24 +204,24 @@ a representation of that identity; it does not define formal evaluation.
 For each scenario independently, let N be its legal-anchor count and B the
 configured epoch budget:
 
-1. **N ≥ B:** select exactly B distinct anchors without replacement. N=B uses
-   every anchor once; N>B permits different subsets in different epochs.
-2. **0 < N < B:** include every legal anchor once, draw B−N additional anchors
+1. **$N\ge B$:** select exactly B distinct anchors without replacement. $N=B$ uses
+   every anchor once; $N>B$ permits different subsets in different epochs.
+2. **$0<N<B$:** include every legal anchor once, draw $B-N$ additional anchors
    with replacement from that same legal set, and shuffle the scenario's list.
-3. **N=0:** a positive budget cannot be fulfilled; report the invalid training
+3. **$N=0$:** a positive budget cannot be fulfilled; report the invalid training
    setup instead of silently removing the scenario's contribution.
 
 Epoch selection is reproducible from dataset seed and epoch. All DDP ranks
 construct the same active dataset before the distributed sampler shards its
 indices. Epoch changes can alter subsets, repetitions, or ordering. No shared
-cross-variant subset is imposed; when N=B the selected set is naturally complete.
+cross-variant subset is imposed; when $N=B$ the selected set is naturally complete.
 
 The budgets preserve the natural H1/full-horizon exposure:
 
 | Dataset | Canonical natural count | B per scenario | Train scenarios | Series per epoch |
 | --- | --- | ---: | ---: | ---: |
-| ISSM | 240−1−180+1 = 60 | 60 | 28 | 1,680 |
-| ANUGA | 73−1−64+1 = 9 | 9 | 12 | 108 |
+| ISSM | $240-1-180+1=60$ | 60 | 28 | 1,680 |
+| ANUGA | $73-1-64+1=9$ | 9 | 12 | 108 |
 
 These are protocol choices derived from canonical exposure, not extra tuned
 hyperparameters. Every formal H/K variant retains the same dataset length.
@@ -233,7 +233,7 @@ are loader counts, not measured runtimes.
 
 Concrete ANUGA T73 examples at K64:
 
-| H | Natural anchors | N | B=9 selection |
+| H | Natural anchors | N | $B=9$ selection |
 | ---: | --- | ---: | --- |
 | 1 | 0,…,8 | 9 | Every anchor exactly once |
 | 4 | 3,4,5,6,7,8 | 6 | All six once plus three replacement draws |
@@ -241,12 +241,12 @@ Concrete ANUGA T73 examples at K64:
 
 For H4, the multiset `3,4,5,6,7,8,4,7,8` is valid before final shuffling.
 For H8, `7,8,7,8,8,7,7,8,7` is valid. Repeated anchor 7 can participate in
-separate optimization steps with k_eff 12, 40, 55, supervising states 8–19,
+separate optimization steps with $k_{\mathrm{eff}}$ 12, 40, 55, supervising states 8–19,
 8–47, and 8–62 respectively. A repeated anchor does not fix supervised series
-length, although equal k_eff draws remain possible.
+length, although equal $k_{\mathrm{eff}}$ draws remain possible.
 
 Fixing B controls scenario exposure and epoch sample count. It does not
-equalize unique anchors, total target timesteps, k_eff, series ending time,
+equalize unique anchors, total target timesteps, $k_{\mathrm{eff}}$, series ending time,
 rollout computational cost, or history length. Normalization and elementwise
 loss reductions retain their existing weighting; equal series counts do not
 turn them into equal-per-scenario loss reductions for different-sized graphs.
@@ -261,7 +261,7 @@ evaluation uses `scenario_infos` directly.
 ## 6. Tensor construction and PyG batching
 
 Selected samples are transformed from time-major raw arrays to node-major
-model tensors. Let \(N_\Sigma\) be total nodes and Q the graph count in a batch:
+model tensors. Let $N_\Sigma$ be total nodes and Q the graph count in a batch:
 
 | Tensor | Before horizon truncation | At a training forward |
 | --- | --- | --- |
@@ -287,32 +287,32 @@ stale worker-side anchor selections.
 
 ## 7. Static, graph, and temporal encoders
 
-Let \(s_i=E_s(\tilde s_i^{raw})\) be the static MLP embedding. At each observed
-history step \(\ell\), a shared spatial graph network computes
+Let $s_i=E_s(\tilde s_i^{raw})$ be the static MLP embedding. At each observed
+history step $\ell$, a shared spatial graph network computes
 
-\[
+$$
 h_i^\ell=G_\phi([\tilde y_i^\ell,\tilde u_i^\ell,s_i],\mathcal G).
-\]
+$$
 
 The same graph encoder weights are reused at every history step. Its outputs
 stack as `[N_sum,H,D_enc]`. The canonical temporal encoder is a Transformer
 with sinusoidal positions and last-token pooling:
 
-\[
+$$
 c_i=P\left(\operatorname{Transformer}
 (h_i^1+p_1,\ldots,h_i^H+p_H)_H\right).
-\]
+$$
 
 Projection P is identity when encoder and context widths match. Mean pooling
 is supported; formal full architecture retains last pooling. The LSTM choice
-uses its final top-layer hidden state as c_i. Attention operates across
+uses its final top-layer hidden state as $c_i$. Attention operates across
 observed time for each node, without a causal mask because all H inputs are
 known. Node chunking retains each node's entire history. CUDA math attention
 is the default for the temporal Transformer. Initialization always uses context:
 
-\[
+$$
 z_i(0)=\operatorname{InitMLP}([c_i,\tilde y_i^{last},s_i]).
-\]
+$$
 
 The model YAML uses latent/static/context width 96, two graph layers, and
 Transformer two layers/four heads/feed-forward width 384. Factorial overlays
@@ -324,27 +324,27 @@ See [architecture equations](upgrade_v1.md).
 The forcing path starts at 0 with the last observed forcing and continues
 through all retained future forcing values:
 
-\[
+$$
 \mathcal U=\{(0,\tilde u^{last}),(\tau_1,\tilde u_1),\ldots,
 (\tau_L,\tilde u_L)\},
-\]
+$$
 
-where L=k_eff in training and L=T−S in evaluation. The interpolator provides
-\(u(t)\) at solver query times. The model uses `hermite_cubic_backward`;
+where $L=k_{\mathrm{eff}}$ in training and $L=T-S$ in evaluation. The interpolator provides
+$u(t)$ at solver query times. The model uses `hermite_cubic_backward`;
 linear interpolation is also implemented. Future states never construct this path.
 
 With both optional ODE inputs enabled, NODE2 integrates
 
-\[
+$$
 \frac{dz_i}{dt}=f_\theta(z_i(t),u_i(t),s_i,c_i,r(t),\mathcal G),
 \qquad r(t)=t/\tau_{\mathrm{scale}}.
-\]
+$$
 
-The protocol sets \(\tau_{\mathrm{scale}}=180\) for ISSM and 65 for ANUGA.
+The protocol sets $\tau_{\mathrm{scale}}=180$ for ISSM and 65 for ANUGA.
 These fixed model constants are independent of K, S, and requested endpoint.
-The time feature is not clamped. Turning ODE context off removes c_i from the
+The time feature is not clamped. Turning ODE context off removes $c_i$ from the
 vector field but preserves it in initialization. Turning relative time off
-removes only r(t).
+removes only $r(t)$.
 
 `odeint` receives `[0,*t_future]`; the returned initial latent is dropped,
 leaving every requested future latent. The model uses standard ODE
@@ -357,28 +357,28 @@ equality alone establishes no prediction accuracy.
 
 ## 9. Decoder, state objective, and optional TC
 
-For direct decoding, \(\hat y_i(t)=D_\psi(z_i(t))\). Canonical residual decoding
+For direct decoding, $\hat y_i(t)=D_\psi(z_i(t))$. Canonical residual decoding
 uses normalized state space:
 
-\[
+$$
 \Delta\hat y_i(t)=D_\psi(z_i(t)),\qquad
 \hat y_i(t)=\tilde y_i^{last}+\Delta\hat y_i(t).
-\]
+$$
 
 The same last-observed anchor is broadcast over every future position; it is
 not a sum of predicted adjacent increments. Decoder chunking splits flattened
 node/time rows to reduce memory. Outputs are inverse-normalized for metrics.
 
 Let a be `training.loss_scale_factor`, and define loss-space tensors
-\(\hat Y=a\hat y\), \(Y=a\tilde y\). The current objective is
+$\hat Y=a\hat y$, $Y=a\tilde y$. The current objective is
 
-\[
+$$
 L_{\mathrm{state}}=\frac{1}{N_\Sigma k_{eff}F}
 \sum_{i,j,c}(\hat Y_{ijc}-Y_{ijc})^2,\qquad
 L_{\mathrm{total}}=L_{\mathrm{state}}+\lambda_{\mathrm{TC}}L_{\mathrm{TC}}.
-\]
+$$
 
-ISSM uses a=100 and ANUGA a=1. Scaling tensors by a multiplies MSE by \(a^2\).
+ISSM uses $a=100$ and ANUGA $a=1$. Scaling tensors by a multiplies MSE by $a^2$.
 TC uses the same scaled tensors and solver time grid. The six supplied choices
 are off, adjacent increment, random-pair increment, multiscale rate, rate plus
 curvature, and hybrid. They reuse the same prediction; there is no second
@@ -392,9 +392,9 @@ The execution order separates two independent selections:
 1. Select B scenario/anchor series per simulation for the epoch.
 2. Construct an H-history/K-future sample for each selected series.
 3. Resolve the epoch curriculum cap from K and training horizon settings.
-4. Sample k_eff at the start of an optimizer/accumulation group and broadcast
+4. Sample $k_{\mathrm{eff}}$ at the start of an optimizer/accumulation group and broadcast
    it from DDP rank 0 to every rank.
-5. Truncate all future-aligned tensors and metadata to k_eff.
+5. Truncate all future-aligned tensors and metadata to $k_{\mathrm{eff}}$.
 6. Predict every future state and compute state plus optional TC loss.
 7. Backpropagate and update AdamW; run rollout validation when scheduled.
 
@@ -405,10 +405,10 @@ with fractions 0.40/0.55/0.70/0.85, then the full target cap. Exact half-up
 rounding, stage indexing, and probabilities are in [horizon curriculum](upgrade_v1.1.md).
 
 With accumulation greater than one, microbatches in the same optimizer group
-share k_eff; the final partial group divides by its actual size. Default
+share $k_{\mathrm{eff}}$; the final partial group divides by its actual size. Default
 accumulation is 1. The scheduler steps once per epoch; fixed series exposure
 makes the epoch's sample/update budget comparable within each formal sweep.
-This does not equalize ODE work across k_eff or history lengths.
+This does not equalize ODE work across $k_{\mathrm{eff}}$ or history lengths.
 
 `train_norm_mse` measures unscaled normalized prediction error.
 `train_loss` aliases `train_total_objective` before accumulation division.
@@ -435,7 +435,7 @@ Standalone `scripts/evaluate.py` reconstructs model, H/K, solver, normalizer,
 and exact splits from the checkpoint. Allowed runtime changes are data-root
 relocation, known_steps, evaluation AMP, output location, and device. H/K,
 architecture, training, normalization, and split changes are rejected.
-Each new S performs inference with true history ending at S−1.
+Each new S performs inference with true history ending at $S-1$.
 
 ## 12. Artifacts and postprocessing
 
@@ -465,14 +465,14 @@ metadata JSON; repeated postprocessing uses these complete arrays.
 ## 13. Formal experiment dependencies and provenance
 
 Phase 1 scans H1–H8 with canonical K, full architecture, canonical S, and TC0.
-Only its selected H* propagates to the architecture factorial, K scan, and TC scan:
+Only its selected $H^*$ propagates to the architecture factorial, K scan, and TC scan:
 
 | Phase | History | Architecture | K | TC |
 | --- | --- | --- | --- | --- |
 | 1. History | H1–H8 | Full | ISSM180 / ANUGA64 | Off |
-| 2. Architecture | Selected H* | All 16 combinations | Canonical | Off |
-| 3. Training horizon | Selected H* | Full | Dataset-specific K scan | Off |
-| 4. Temporal consistency | Selected H* | Full | Canonical | TC0–TC5 |
+| 2. Architecture | Selected $H^*$ | All 16 combinations | Canonical | Off |
+| 3. Training horizon | Selected $H^*$ | Full | Dataset-specific K scan | Off |
+| 4. Temporal consistency | Selected $H^*$ | Full | Canonical | TC0–TC5 |
 
 ISSM K values are 30/45/60/75/90/120/150/180; ANUGA values
 are 8/16/24/32/40/48/56/64. S remains 60 for ISSM and 8 for ANUGA.

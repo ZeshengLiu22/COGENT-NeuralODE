@@ -36,16 +36,18 @@ target cap is `dataset.future_len`.
 
 For each epoch, the trainer resolves an epoch-local maximum horizon:
 
-```text
-current_max = train_horizon_min
-              + fraction * (target_train_horizon_max - train_horizon_min)
-```
+$$
+\begin{aligned}
+\texttt{current\_max} &= \texttt{train\_horizon\_min}\\
+&\quad + \texttt{fraction}\cdot(\texttt{target\_train\_horizon\_max}-\texttt{train\_horizon\_min}).
+\end{aligned}
+$$
 
 The result is rounded to the nearest integer and clamped to:
 
-```text
-train_horizon_min <= current_max <= target_train_horizon_max
-```
+$$
+\texttt{train\_horizon\_min}\le\texttt{current\_max}\le\texttt{target\_train\_horizon\_max}.
+$$
 
 With the default four fractions, the first 120 epochs are split into four
 equal stages. After epoch 120, `current_max` stays at the target cap.
@@ -63,9 +65,9 @@ For ISSM with `train_horizon_min: 24`, the proposed ablation targets produce:
 For ANUGA defaults with `train_horizon_min: 8` and target `64`, the stage caps
 are:
 
-```text
+$$
 30, 39, 47, 56, 64
-```
+$$
 
 ## Sampling
 

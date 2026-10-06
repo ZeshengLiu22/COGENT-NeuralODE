@@ -3,7 +3,7 @@
 The active design separates H (history), K (maximum stored training future),
 S (rollout start), and B (per-scenario epoch series count). Formal validation,
 checkpoint selection, test, and standalone inference predict from S to the
-trajectory end. Only selected history H* propagates between formal phases.
+trajectory end. Only selected history $H^*$ propagates between formal phases.
 
 This record incorporates the final cleanup after the earlier rollout-only
 refactor. [Current validation evidence](final_cleanup_validation/results.json)
@@ -32,28 +32,28 @@ are not restored as runtime behavior. The active technical documents are in
 ## Fixed exposure with natural anchors and variable horizons
 
 At anchor t, a training sample holds history `x[t-H+1:t+1]` and maximum future
-`x[t+1:t+K+1]`. Its actual prediction is the complete first k_eff future states,
-with k_eff sampled independently by the existing synchronized horizon sampler.
+`x[t+1:t+K+1]`. Its actual prediction is the complete first $k_{\mathrm{eff}}$ future states,
+with $k_{\mathrm{eff}}$ sampled independently by the existing synchronized horizon sampler.
 
 At stride 1,
 
-\[
+$$
 N_{\mathrm{natural}}=T-H-K+1.
-\]
+$$
 
-Each scenario contributes B selected series. If N≥B, choose B distinct anchors
-without replacement. If 0<N<B, include all anchors once, draw B−N extras with
+Each scenario contributes B selected series. If $N\ge B$, choose B distinct anchors
+without replacement. If $0<N<B$, include all anchors once, draw $B-N$ extras with
 replacement from that same scenario, then shuffle. This preserves unique-anchor
 coverage when the budget exceeds the natural set. A positive budget with no
 legal anchors is an error.
 
 `dataset.train_series_per_scenario_per_epoch` is the only epoch sampling
-budget field. Formal ISSM B=60 preserves canonical H1/K180 exposure on T240;
-ANUGA B=9 preserves H1/K64 exposure on T73. Therefore 28×60=1,680 ISSM and
-12×9=108 ANUGA training series are selected each epoch across every formal H/K
+budget field. Formal ISSM $B=60$ preserves canonical H1/K180 exposure on T240;
+ANUGA $B=9$ preserves H1/K64 exposure on T73. Therefore $28\times60=1{,}680$ ISSM and
+$12\times9=108$ ANUGA training series are selected each epoch across every formal H/K
 variant. Both counts divide evenly among four ranks, requiring no DDP padding.
 
-This equalizes scenario exposure and series count, not k_eff, total target
+This equalizes scenario exposure and series count, not $k_{\mathrm{eff}}$, total target
 timesteps, exact anchors, or series ending time. The epoch-based optimizer/
 scheduler behavior is retained. The natural anchor set remains specific to H/K.
 For ANUGA H4/K64, six legal anchors yield six unique plus three repeated draws;
@@ -70,7 +70,7 @@ metadata. Standalone train-split evaluation also skips training-series expansion
 | ISSM | PIG_5000 | 1 / 180 / 60 | 60 | 180 | 8 / 24 / 100 |
 | ANUGA | Existing merged simulations | 1 / 64 / 8 | 9 | 65 | 1 / 8 / 1 |
 
-Formal history is `x[S-H:S]`, prediction `x[S:T]`, and H≤S<T.
+Formal history is `x[S-H:S]`, prediction `x[S:T]`, and $H\le S<T$.
 K30 does not cap an ISSM known60 rollout: it still predicts 180 states on T240.
 Null `train_horizon_max` inherits K; ANUGA K8 is valid with minimum 8.
 The relative-time scale remains fixed independently of K, S, or endpoint.
@@ -101,9 +101,9 @@ explicitly enable full-trajectory caching for these datasets.
 | Phase | H | Architecture | K | S | TC |
 | --- | --- | --- | --- | --- | --- |
 | 1. History | 1…8 | Full | Canonical | Canonical | Off |
-| 2. Architecture | Selected H* | All 16 | Canonical | Canonical | Off |
-| 3. K | Selected H* | Full | Dataset K scan | Canonical | Off |
-| 4. TC | Selected H* | Full | Canonical | Canonical | TC0…TC5 |
+| 2. Architecture | Selected $H^*$ | All 16 | Canonical | Canonical | Off |
+| 3. K | Selected $H^*$ | Full | Dataset K scan | Canonical | Off |
+| 4. TC | Selected $H^*$ | Full | Canonical | Canonical | TC0…TC5 |
 
 ISSM K scan is 30/45/60/75/90/120/150/180; ANUGA is
 8/16/24/32/40/48/56/64. Architecture and K winners do not propagate to other
@@ -131,7 +131,7 @@ launcher/stale-reference audits, and are not recommended for new runs.
 Restored active references are the substantial master technical handbook,
 architecture equations, exact curriculum equations, and formula-complete TC
 guide. The operating/configuration guides and docs index point to current
-paths and H*-only phase dependencies.
+paths and $H^*$-only phase dependencies.
 
 ## Evaluation artifacts and postprocessing
 
@@ -161,7 +161,7 @@ sampler across formal H/K scans, and the prefix audit uses rollout datasets.
 
 A bounded real-data CUDA smoke runner and independent ISSM/ANUGA submission
 files are provided under `tests/`. They exercise canonical model/data/splits,
-fixed series counts, four-rank training, sampled k_eff, rollout validation,
+fixed series counts, four-rank training, sampled $k_{\mathrm{eff}}$, rollout validation,
 best checkpoint, standalone evaluation, saved NPZ, and postprocessing.
 CUDA smoke has not been executed as of this cleanup record: this session's
 compute-node submission policy and login authentication prevent submission.

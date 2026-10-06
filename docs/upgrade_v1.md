@@ -9,25 +9,25 @@ and enables all three switches.
 
 The scientific input/output contract is unchanged by these choices: H true
 history states plus known future forcing produce a complete future state series.
-Training predicts 1…k_eff; formal evaluation predicts S…T−1. State MSE is
+Training predicts $1,\ldots,k_{\mathrm{eff}}$; formal evaluation predicts $S,\ldots,T-1$. State MSE is
 always present; optional [TC](temporal_consistency.md) uses the same prediction.
 
 ## Static and per-history-step graph encoding
 
-Let \(s_i^{raw}\), \(y_i^\tau\), and \(u_i^\tau\) denote normalized static,
+Let $s_i^{raw}$, $y_i^\tau$, and $u_i^\tau$ denote normalized static,
 state, and forcing inputs. First embed static features with an MLP:
 
-\[
+$$
 s_i=E_s(s_i^{raw}).
-\]
+$$
 
 For every observed history step, apply the same spatial graph network:
 
-\[
+$$
 h_i^\tau=
 G_\phi([y_i^\tau,u_i^\tau,s_i],\mathcal G),
 \qquad \tau=1,\ldots,H.
-\]
+$$
 
 Each GNN call sees one history snapshot on the batch's disconnected graphs.
 The output stacks as `[N_total,H,D_enc]`, preserving node identity. The current
@@ -39,19 +39,19 @@ graph layers; connectivity is `edge_index`.
 
 The shorthand temporal-context equation is
 
-\[
+$$
 c_i=\operatorname{Transformer}(h_i^1,\ldots,h_i^H).
-\]
+$$
 
 In code, the Transformer first adds sinusoidal positional encodings, applies
 two encoder layers, pools the last output token, and projects to the context
 width if needed:
 
-\[
+$$
 c_i=P\left(
 \operatorname{Transformer}(h_i^1+p_1,\ldots,h_i^H+p_H)_H
 \right).
-\]
+$$
 
 Attention is across observed time for each node separately. It has no causal
 mask because every history state is known; graph message passing supplies
@@ -64,9 +64,9 @@ dot-product attention unless explicitly configured otherwise.
 
 The alternative context is the final top-layer hidden state of a node-wise LSTM:
 
-\[
+$$
 c_i=\operatorname{LSTM}(h_i^1,\ldots,h_i^H)_{\mathrm{last}}.
-\]
+$$
 
 `model.history_encoder.history_encoder_type` is the selector:
 `transformer` or `lstm`. The code's context width is named `lstm_hidden_dim`
@@ -76,9 +76,9 @@ an identity projection when its width already equals the context width.
 Both choices always initialize the latent state using context, the last
 observed normalized state, and static embedding:
 
-\[
+$$
 z_i(0)=\operatorname{InitMLP}([c_i,y_i^{last},s_i]).
-\]
+$$
 
 Consequently, turning off history context in the ODE does not disable history
 encoding or remove history information from initial conditions.
@@ -87,20 +87,20 @@ encoding or remove history information from initial conditions.
 
 Without persistent ODE history context, the vector field is
 
-\[
+$$
 \frac{dz_i}{dt}
 =f_\theta(z_i(t),u_i(t),s_i,\mathcal G).
-\]
+$$
 
 With `model.use_history_in_ode: true`, it is
 
-\[
+$$
 \frac{dz_i}{dt}
 =f_\theta(z_i(t),u_i(t),s_i,c_i,\mathcal G).
-\]
+$$
 
 These equations omit the independently optional time input for clarity.
-Context c_i and static embedding s_i stay fixed during one rollout, while the
+Context $c_i$ and static embedding $s_i$ stay fixed during one rollout, while the
 latent state and interpolated forcing vary continuously. A graph network
 returns one latent derivative per node. Context is concatenated directly into
 its input, increasing that input width; there is no separate attention or
@@ -114,16 +114,16 @@ integration.
 
 With `model.use_relative_time: true`, append the scalar feature
 
-\[
+$$
 r(t)=t/\tau_{\mathrm{scale}},
-\]
+$$
 
 broadcast to all nodes. With both optional inputs enabled, the full equation is
 
-\[
+$$
 \frac{dz_i}{dt}
 =f_\theta(z_i(t),u_i(t),s_i,c_i,r(t),\mathcal G).
-\]
+$$
 
 Here t is solver time relative to the current history anchor. The dataset first
 divides adapter time offsets by the trajectory's median positive timestep.
@@ -145,7 +145,7 @@ numerical solver behavior; the real-data prefix audit checks the active path.
 It is not a claim that every arbitrary adaptive solver or interpolator is
 bitwise prefix-invariant.
 
-Known forcing is interpolated through the last observed forcing at t=0 and all
+Known forcing is interpolated through the last observed forcing at $t=0$ and all
 future forcing samples. The canonical interpolation is backward-Hermite cubic;
 linear is also supported. Future state never enters interpolation.
 
@@ -153,22 +153,22 @@ linear is also supported. Future state never enters interpolation.
 
 Direct decoding uses
 
-\[
+$$
 \hat y_i(t)=D_\psi(z_i(t)).
-\]
+$$
 
 With `model.use_residual_decoder: true`, the decoder predicts a delta:
 
-\[
+$$
 \Delta\hat y_i(t)=D_\psi(z_i(t)),\qquad
 \hat y_i(t)=y_i^{last}+\Delta\hat y_i(t).
-\]
+$$
 
 All terms are in normalized state space. The anchor has shape
 `[N_total,F_state]` and is broadcast across predicted times. Each future delta
 is relative to the same observed state, rather than accumulated from earlier
 decoded outputs. Residual mode does not impose a hard zero decoder value at
-t=0; the returned output contains future times only.
+$t=0$; the returned output contains future times only.
 
 The decoder has two hidden layers of width 96 and GELU in the model YAML.
 Its optional chunk size (default 262144 flattened node/time rows) controls
@@ -224,13 +224,13 @@ full architecture matches `a01_transformer_reson_ctxon_timeon.yaml`.
 | a15 | LSTM | OFF | OFF | ON |
 | a16 | LSTM | OFF | OFF | OFF |
 
-Phase 2 uses selected H* from Phase 1, canonical K (ISSM180 / ANUGA64),
+Phase 2 uses selected $H^*$ from Phase 1, canonical K (ISSM180 / ANUGA64),
 canonical S (ISSM60 / ANUGA8), and TC0. The per-scenario epoch budget stays
 ISSM60 / ANUGA9. Architecture changes therefore do not change series counts
 or the horizon sampling design.
 
 The architecture winner is not propagated to Phase 3 or Phase 4. Both return
 to `full.yaml`; Phase 3 scans K and Phase 4 uses canonical K for TC0–TC5.
-Only selected H* propagates. Standalone Phase-2 files under
+Only selected $H^*$ propagates. Standalone Phase-2 files under
 `launchers/{shell,slurm}/<dataset>/02_architecture/` fail until their
 selected-history placeholders are replaced.

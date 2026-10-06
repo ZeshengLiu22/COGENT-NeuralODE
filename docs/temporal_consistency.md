@@ -4,10 +4,10 @@ This document follows `training/losses.py` and its call in `training/trainer.py`
 NODE2 retains the complete-series state MSE and can add one TC formulation to
 the same forward prediction:
 
-\[
+$$
 L_{\mathrm{total}}
 =L_{\mathrm{state}}+\lambda_{\mathrm{TC}}L_{\mathrm{TC}}.
-\]
+$$
 
 There is no automatic magnitude matching, EMA balancing, or hidden weight 0.3.
 The configured outer weight is applied once by the trainer. Every supplied
@@ -16,33 +16,33 @@ the checkpoint criterion are unchanged; TC requires no additional model forward.
 
 ## Tensors, scaling, and reduction operator
 
-Write \(\hat Y,Y\in\mathbb R^{N_\Sigma\times L\times F}\), where \(N_\Sigma\)
-is total nodes across a PyG microbatch, \(L=k_{\mathrm{eff}}\), and F is the
+Write $\hat Y,Y\in\mathbb R^{N_\Sigma\times L\times F}$, where $N_\Sigma$
+is total nodes across a PyG microbatch, $L=k_{\mathrm{eff}}$, and F is the
 number of state channels. These are normalized model predictions/targets
 multiplied by `training.loss_scale_factor` before calling either loss:
 ISSM 100, ANUGA 1. The base objective is
 
-\[
+$$
 L_{\mathrm{state}}=\frac{1}{N_\Sigma L F}
 \sum_{n=1}^{N_\Sigma}\sum_{t=0}^{L-1}\sum_{c=1}^{F}
 (\hat Y_{ntc}-Y_{ntc})^2.
-\]
+$$
 
 For any nonempty component error tensor e, define
 
-\[
+$$
 P_{\mathrm{mse}}(e)=\operatorname{mean}_{\text{all elements}}e^2,
-\]
+$$
 
 or, with `penalty: rmse`,
 
-\[
+$$
 P_{\mathrm{rmse}}(e)=
 \sqrt{\operatorname{mean}_{\text{all elements}}(e^2)+\epsilon}
 -\sqrt{\epsilon},\qquad\epsilon>0.
-\]
+$$
 
-The optional RMSE defaults to ε=1e-8. It is zero with finite zero gradient at
+The optional RMSE defaults to $\epsilon=10^{-8}$. It is zero with finite zero gradient at
 perfect prediction; it differs from exact RMSE near zero. The square root is
 applied after elementwise mean, separately for each component/lag. It is not
 an average of nodewise or graphwise RMSE values.
@@ -71,16 +71,16 @@ All component weights in the supplied T4/T5 overlays are 1.0. Their components
 are summed without dividing by the number of components. Consequently the
 same outer weight does not imply equal regularization magnitude across modes.
 
-Phase 4 fixes selected H* from Phase 1, canonical full architecture,
+Phase 4 fixes selected $H^*$ from Phase 1, canonical full architecture,
 K180/known60 for ISSM or K64/known8 for ANUGA, and the protocol's fixed B.
 It does not inherit the architecture or K-scan winners. The effective horizon
 is still sampled independently, and short horizons use the valid terms below.
 
 ## T0: off
 
-\[
+$$
 L_{\mathrm{TC}}=0.
-\]
+$$
 
 With `enabled: false`, dispatch returns zero total and components. Zero terms
 are represented by `y_pred.sum()*0.0` to remain attached to the prediction
@@ -88,58 +88,58 @@ graph. An enabled configuration with `mode: none` is invalid.
 
 ## T1: adjacent increment
 
-For \(t=0,\ldots,L-2\), form
+For $t=0,\ldots,L-2$, form
 
-\[
+$$
 \Delta\hat Y_t=\hat Y_{t+1}-\hat Y_t,\qquad
 \Delta Y_t=Y_{t+1}-Y_t,
-\]
+$$
 
-\[
+$$
 L_{\mathrm{adj}}=
 P\big(\Delta\hat Y-\Delta Y\big),\qquad
 L_{\mathrm{TC}}=L_{\mathrm{adj}}.
-\]
+$$
 
 The error tensor is `[N_sum,L-1,F]`. P averages nodes, adjacent future pairs,
-and channels. No elapsed-time division is applied. If L<2, the term is zero.
+and channels. No elapsed-time division is applied. If $L<2$, the term is zero.
 
 ## T2: random-pair increment
 
 Eligible pairs are
 
-\[
+$$
 \mathcal C=\{(i,j):0\le i<j<L,\quad
 \ell_{\min}\le j-i,\quad j-i\le\ell_{\max}\text{ if supplied}\}.
-\]
+$$
 
 `random_pair.min_lag` defaults to 1; `max_lag: null` has no upper restriction.
-Each graph g independently selects \(m=\min(M,|\mathcal C|)\) distinct pairs
-without replacement, where M=`num_pairs` (default 1). All nodes of graph g use
-that graph's pair set \(\mathcal P_g\). Different graphs can coincidentally
-select the same pair. For node n belonging to graph g and pair \((i,j)\),
+Each graph g independently selects $m=\min(M,|\mathcal C|)$ distinct pairs
+without replacement, where $M=\texttt{num\_pairs}$ (default 1). All nodes of graph g use
+that graph's pair set $\mathcal P_g$. Different graphs can coincidentally
+select the same pair. For node n belonging to graph g and pair $(i,j)$,
 
-\[
+$$
 e_{n,(i,j),c}=
 (\hat Y_{njc}-\hat Y_{nic})-(Y_{njc}-Y_{nic}),
-\]
+$$
 
-\[
+$$
 L_{\mathrm{TC}}=L_{\mathrm{pair}}=P(e).
-\]
+$$
 
 For MSE, this is explicitly
 
-\[
+$$
 L_{\mathrm{pair}}=
 \frac{1}{N_\Sigma m F}
 \sum_{n=1}^{N_\Sigma}
 \sum_{(i,j)\in\mathcal P_{g(n)}}\sum_{c=1}^{F}e_{n,(i,j),c}^2.
-\]
+$$
 
 The intermediate error shape is `[N_sum,m,F]`. There is no elapsed-time division
 and no intermediate mean over graph losses. Requesting more pairs than exist
-uses all eligible pairs once; L<2 or an empty candidate set yields zero.
+uses all eligible pairs once; $L<2$ or an empty candidate set yields zero.
 
 The implementation creates independent random priorities for each graph's
 eligible pairs and takes top-k. The trainer supplies `batch.batch` and a
@@ -155,31 +155,31 @@ both, so those helper defaults do not define formal training behavior.
 
 ## T3: multiscale rate
 
-Let τ be the retained future solver time grid. At lag d,
+Let $\tau$ be the retained future solver time grid. At lag d,
 
-\[
+$$
 R_t^{(d)}(Y)=\frac{Y_{t+d}-Y_t}{\tau_{t+d}-\tau_t},
 \qquad t=0,\ldots,L-d-1,
-\]
+$$
 
-\[
+$$
 L_d=P\left(R^{(d)}(\hat Y)-R^{(d)}(Y)\right).
-\]
+$$
 
 Each lag error has shape `[N_sum,L-d,F]`; P averages all its elements.
-Let \(\mathcal D_v=\{d:d<L,\ w_d>0\}\). Then
+Let $\mathcal D_v=\{d:d<L,\ w_d>0\}$. Then
 
-\[
+$$
 L_{\mathrm{rate}}=
 \frac{\sum_{d\in\mathcal D_v}w_dL_d}
 {\sum_{d\in\mathcal D_v}w_d},
 \qquad L_{\mathrm{TC}}=L_{\mathrm{rate}}.
-\]
+$$
 
 Supplied T3 uses lags 1,3,6,12 with equal weights. Optional `rate.lag_weights`
 must have the same length as `rate.lags` and be finite, nonnegative, with at
 least one positive weight. Invalid-for-this-horizon lags are skipped and valid
-weights are renormalized. For L=8, lags 1,3,6 contribute equally; lag 12 drops
+weights are renormalized. For $L=8$, lags 1,3,6 contribute equally; lag 12 drops
 out. This is a weighted average of separate lag penalties, not a pooled
 average favoring lags with more available time pairs. No valid lag yields zero.
 
@@ -187,27 +187,27 @@ average favoring lags with more available time pairs. No valid lag yields zero.
 
 The nonuniform-grid second derivative at an interior future index is
 
-\[
+$$
 A_t(Y)=
 \frac{2}{\tau_{t+1}-\tau_{t-1}}
 \left[
 \frac{Y_{t+1}-Y_t}{\tau_{t+1}-\tau_t}
 -\frac{Y_t-Y_{t-1}}{\tau_t-\tau_{t-1}}
 \right],\qquad t=1,\ldots,L-2.
-\]
+$$
 
-\[
+$$
 L_{\mathrm{curvature}}=P(A(\hat Y)-A(Y)),
-\]
+$$
 
-\[
+$$
 L_{\mathrm{TC}}=
 w_rL_{\mathrm{rate}}+w_cL_{\mathrm{curvature}}.
-\]
+$$
 
 Curvature error has shape `[N_sum,L-2,F]`, with P averaging nodes, interior
 times, and channels. It matches target curvature; it does not force predicted
-curvature itself toward zero. Curvature is zero for L<3. T4 rate uses the T3
+curvature itself toward zero. Curvature is zero for $L<3$. T4 rate uses the T3
 lags 1,3,6,12 and valid-lag renormalization.
 
 Weights are `rate_curvature.rate_weight` and
@@ -216,19 +216,19 @@ renormalized when one term becomes unavailable at a short horizon.
 
 ## T5: hybrid
 
-\[
+$$
 L_{\mathrm{TC}}=
 w_aL_{\mathrm{adj}}+
 w_rL_{\mathrm{rate}}+
 w_cL_{\mathrm{curvature}}.
-\]
+$$
 
 T5 uses rate lags 3,6,12, while T1's adjacent increment already supplies the
 local increment component. This choice keeps the supplied hybrid's rate
 component focused on longer intervals. Valid-lag renormalization is unchanged.
 Weights are `hybrid.adjacent_weight`, `hybrid.rate_weight`, and
 `hybrid.curvature_weight`, each default 1.0. Components are added directly;
-the outer λ_TC multiplies this sum once.
+the outer $\lambda_{\mathrm{TC}}$ multiplies this sum once.
 
 ## Time coordinates, validation, and edge cases
 
@@ -243,7 +243,7 @@ term is available, times must be finite, strictly increasing, length L, and
 identical across all graph rows. Batched unequal time grids are unsupported.
 
 Missing terms return differentiable zero: no adjacent/pair differences at
-L=1, no curvature below L=3, and no rate lag with d<L. The helpers return early
+$L=1$, no curvature below $L=3$, and no rate lag with $d<L$. The helpers return early
 when no term is available and do not require a time grid solely for a zero
 term. Shape checks otherwise require matching rank-three prediction/target
 arrays. Configuration validation runs at trainer initialization. Unknown
@@ -259,7 +259,7 @@ recursive overlay merge do not change the selected formulation.
 | `train_phys_rmse` | Physical prediction RMSE |
 | `train_state_objective` | State MSE after loss-space scaling |
 | `train_tc_raw` | Selected temporal objective before outer weight |
-| `train_tc_weighted` | λ_TC times raw TC |
+| `train_tc_weighted` | $\lambda_{\mathrm{TC}}$ times raw TC |
 | `train_total_objective`, `train_loss` | Optimized state plus weighted TC, before accumulation division |
 | `train_tc_adjacent`, `train_tc_random_pair`, `train_tc_rate`, `train_tc_curvature` | Raw components; unused components zero |
 
