@@ -1,8 +1,48 @@
-torch
-torch-geometric
-torchdiffeq
-torchcde
-PyYAML
-numpy
-scipy
-tqdm
+# Shared environment for COGENT-NeuralODE and PACT/StormSurge.
+# Recommended: Python 3.11; the existing Python 3.10 PACT environment also fits.
+# Install the appropriate GPU PyTorch build first, then this file. Example:
+#   python -m pip install torch==2.8.0 --index-url https://download.pytorch.org/whl/cu126
+#   python -m pip install -r requirements.txt
+# Choose the CUDA build for the driver on the target GPU node.
+# Official wheel choices: https://pytorch.org/get-started/previous-versions/
+# This is a shared dependency specification, not an exact environment lock.
+
+# Graph ML and neural differential equations.
+# The code needs torch >=2.3; use the 2.7/2.8 families recorded in project
+# environments and validation results. Keep an already installed CUDA build.
+torch>=2.7.1,<2.9
+torch-geometric>=2.7,<2.9
+torchdiffeq>=0.2.5,<0.3
+torchcde>=0.2.5,<0.3
+# Current models work with base PyG. Optional compiled PyG extensions must
+# match the installed PyTorch/CUDA versions and should be installed separately.
+
+# Shared numerical, configuration, and plotting dependencies.
+numpy>=1.26,<3
+scipy>=1.11,<2
+pandas>=2.2,<3
+PyYAML>=6,<7
+matplotlib>=3.8,<4
+tqdm>=4.66,<5
+
+# PACT preprocessing: tabular data, NetCDF, and climate calendars.
+xarray>=2024.1
+netCDF4>=1.6
+cftime>=1.6
+
+# Common scientific data tools: HDF5 and chunked/multi-file xarray workflows.
+h5py>=3.10
+h5netcdf>=1.3
+dask[array]>=2024.1
+
+# General ML analysis, visualization, and experiment monitoring.
+scikit-learn>=1.4,<2
+seaborn>=0.13,<1
+joblib>=1.3
+psutil>=5.9
+tensorboard>=2.16,<3
+
+# Interactive analysis and test runner.
+jupyterlab>=4,<5
+ipykernel>=6,<8
+pytest>=8,<10
