@@ -2,6 +2,7 @@
 #PBS -N anuga_01_h1
 #PBS -A ULHI0006
 #PBS -q main
+#PBS -l job_priority=economy
 #PBS -l select=1:ncpus=64:mpiprocs=4:ompthreads=1:ngpus=4
 #PBS -l place=excl
 #PBS -l walltime=12:00:00
