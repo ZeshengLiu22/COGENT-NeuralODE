@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import textwrap
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -30,15 +31,56 @@ class LauncherTest(unittest.TestCase):
             shutil.copy2(path, self.root / path.name)
         self.capture = self.root / 'commands.jsonl'
         self.python = self.root / 'python'
-        self.python.write_text(f'#!{sys.executable}\nimport json, os, sys\n'
-            "with open(os.environ['LAUNCHER_CAPTURE'], 'a') as handle:\n"
-            "    handle.write(json.dumps({'args': sys.argv[1:], 'cwd': os.getcwd()}) + '\\n')\n")
+        self.metric_table = (
+            'scope          channel    count  phys_rmse  phys_mae  norm_rmse  norm_mae\n'
+            'whole_rollout  aggregate  36     1.250000   1.000000  0.500000   0.400000\n'
+            'final_step     aggregate  9      2.000000   1.500000  0.800000   0.600000'
+        )
+        self.python.write_text(f'#!{sys.executable}\nMETRIC_TABLE = {self.metric_table!r}\n' + textwrap.dedent(r"""
+            import json, os, sys
+            from pathlib import Path
+            args = sys.argv[1:]
+            with open(os.environ['LAUNCHER_CAPTURE'], 'a') as handle:
+                handle.write(json.dumps({'args': args, 'cwd': os.getcwd()}) + '\n')
+            def option(name):
+                return args[args.index(name) + 1]
+            if 'scripts/train.py' in args and option('--run-name').endswith('/train'):
+                output = Path('outputs') / option('--run-name')
+                output.mkdir(parents=True, exist_ok=True)
+                print('fake training stdout')
+                print('fake training stderr', file=sys.stderr)
+                (output / 'train.log').write_text('retained training log\n')
+                (output / 'history.json').write_text('[{"epoch": 1}]\n')
+                (output / 'config.json').write_text('{}\n')
+                (output / 'split_files.json').write_text('{}\n')
+                configs = [args[i + 1] for i, arg in enumerate(args) if arg == '--config']
+                (output / 'config_stack.txt').write_text('\n'.join(configs) + '\n')
+                checkpoint = os.environ.get('FAKE_CHECKPOINT', 'valid')
+                if checkpoint != 'missing':
+                    (output / 'best.pt').write_bytes(b'' if checkpoint == 'empty' else b'best validation weights')
+                status = int(os.environ.get('FAKE_TRAIN_EXIT', '0'))
+                if status:
+                    print('fake training failure', file=sys.stderr)
+                else:
+                    (output / 'final_metrics.json').write_text('{"best_epoch": 1}\n')
+                sys.exit(status)
+            elif 'scripts/evaluate.py' in args and Path(option('--checkpoint')).parent.name == 'train':
+                output = Path(option('--output-dir'))
+                output.mkdir(parents=True, exist_ok=True)
+                status = int(os.environ.get('FAKE_INFER_EXIT', '0'))
+                if status:
+                    print('fake inference failure', file=sys.stderr)
+                    sys.exit(status)
+                print('Detailed metric table:\n' + METRIC_TABLE)
+                (output / 'metric_table.txt').write_text(METRIC_TABLE + '\n')
+        """))
         self.python.chmod(0o755)
         self.env = dict(os.environ)
         for name in ('DATASET_CONFIG', 'PROTOCOL_CONFIG', 'MODEL_CONFIG', 'RUNTIME_CONFIG', 'HISTORY_CONFIG',
                      'ARCHITECTURE_CONFIG', 'TRAINING_HORIZON_CONFIG', 'ROLLOUT_START_CONFIG',
                      'TEMPORAL_CONSISTENCY_CONFIG', 'SLURM_JOB_ID', 'PBS_JOBID', 'PBS_O_WORKDIR',
-                     'SITE_CONFIG', 'FINAL_CONFIG', 'TMUX', 'SESSION_NAME'):
+                     'SITE_CONFIG', 'FINAL_CONFIG', 'TMUX', 'SESSION_NAME',
+                     'FAKE_TRAIN_EXIT', 'FAKE_INFER_EXIT', 'FAKE_CHECKPOINT'):
             self.env.pop(name, None)
         self.env.update(PROJECT_ROOT=str(self.root), PYTHON_BIN=str(self.python),
                         LAUNCHER_CAPTURE=str(self.capture), NPROC='4', CUDA_VISIBLE_DEVICES='',
@@ -80,6 +122,10 @@ class LauncherTest(unittest.TestCase):
 
     def test_exact_six_launcher_trees_and_phase_counts(self):
         self.assertEqual(len(list((ROOT / 'launchers').rglob('*.sh'))), 228)
+        pbs_names = [re.search(r'^#PBS -N (.+)$', path.read_text(), re.MULTILINE).group(1)
+                     for path in (ROOT / 'launchers/PBS').rglob('*.sh')]
+        self.assertEqual(len(set(pbs_names)), 76)
+        self.assertTrue(all(len(name) <= 15 for name in pbs_names))
         for execution in ('shell', 'slurm', 'PBS'):
             for dataset in ('issm', 'anuga'):
                 base = ROOT / 'launchers' / execution / dataset
@@ -150,6 +196,45 @@ class LauncherTest(unittest.TestCase):
                     self.assertIn(f'{field}_config={config}', result.stdout)
                 self.assertIn('output_dir=', result.stdout)
                 self.assertIn('log_file=', result.stdout)
+                evaluations = [entry for entry in calls if 'scripts/evaluate.py' in entry['args']]
+                if execution != 'PBS':
+                    self.assertEqual(evaluations, [])
+                    continue
+                experiment = f'{dataset}_{phase}_h{h}_k{k}_{architecture}_{tc}_test_pbs12345.casper-pbs'
+                args = call['args']
+                self.assertEqual(args[args.index('--run-name') + 1], f'{experiment}/train')
+                run_dir = self.root / 'outputs' / experiment
+                train_dir, infer_dir = run_dir / 'train', run_dir / 'inference'
+                self.assertEqual(len(evaluations), 1)
+                self.assertGreater(calls.index(evaluations[0]), calls.index(call))
+                self.assertEqual(evaluations[0]['cwd'], str(self.root))
+                self.assertEqual(evaluations[0]['args'], [
+                    'scripts/evaluate.py', '--checkpoint', str(train_dir / 'best.pt'),
+                    '--split', 'test', '--device', 'cuda', '--amp-mode', 'none',
+                    '--output-dir', str(infer_dir)])
+                self.assertEqual({entry.name for entry in run_dir.iterdir()}, {'train', 'inference'})
+                for name in ('best.pt', 'config.json', 'config_stack.txt', 'split_files.json',
+                             'history.json', 'final_metrics.json', 'train.log', 'launcher.log',
+                             'runtime_metadata.txt'):
+                    self.assertTrue((train_dir / name).is_file(), name)
+                self.assertEqual((train_dir / 'config_stack.txt').read_text().splitlines(), expected)
+                train_log = (train_dir / 'launcher.log').read_text()
+                infer_log = (infer_dir / 'inference.log').read_text()
+                self.assertIn('fake training stdout', train_log)
+                self.assertIn('fake training stderr', train_log)
+                self.assertNotIn('Detailed metric table:', train_log)
+                self.assertNotIn('fake training stdout', infer_log)
+                self.assertIn('Detailed metric table:\n' + self.metric_table, infer_log)
+                self.assertEqual((infer_dir / 'metric_table.txt').read_text(), self.metric_table + '\n')
+                metadata = (train_dir / 'runtime_metadata.txt').read_text()
+                for key in ('pbs_job_id', 'git_commit', 'gpu_model', 'run_name',
+                            'training_start_utc', 'training_end_utc', 'inference_start_utc',
+                            'inference_end_utc'):
+                    self.assertIn(f'{key}=', metadata)
+                for stage in ('training', 'inference'):
+                    self.assertIn(f'{stage}_exit_status=0', metadata)
+                for field, config in zip(fields, expected):
+                    self.assertIn(f'{field}_config={config}', metadata)
 
     def test_phases_two_through_four_fail_before_environment_or_training(self):
         for path in sorted((ROOT / 'launchers').rglob('*.sh')):
@@ -190,15 +275,95 @@ class LauncherTest(unittest.TestCase):
                 elif 'PBS' in path.parts:
                     self.assertTrue(source.startswith('#!/bin/bash -l\n'))
                     self.assertEqual([line for line in source.splitlines() if line.startswith('#PBS')], [
-                        '#PBS -N cogent_a100', '#PBS -A ULHI0006', '#PBS -q casper',
+                        f'#PBS -N {path.parts[-3]}_{path.parts[-2][:2]}_{path.stem.split("_")[0]}',
+                        '#PBS -A ULHI0006', '#PBS -q casper',
                         '#PBS -l select=1:ncpus=16:mpiprocs=1:mem=128GB:ngpus=1:gpu_type=a100_80gb',
-                        '#PBS -l walltime=12:00:00', '#PBS -j oe'])
+                        '#PBS -l place=shared', '#PBS -l walltime=24:00:00', '#PBS -j oe'])
                     self.assertIn('PROJECT_ROOT="${PROJECT_ROOT:-/glade/u/home/zel/scratch/COGENT-NeuralODE}"', source)
                     self.assertIn('/glade/work/zel/conda-envs/casper-ml/bin/python', source)
                     self.assertIn('\nNPROC=1\n', source)
                     self.assertNotIn('SLURM', source)
                     self.assertNotIn('#SBATCH', source)
                     self.assertTrue(os.access(path, os.X_OK))
+                    self.assertIn('set -euo pipefail', source)
+
+    def test_pbs_failures_preserve_artifacts_and_return_nonzero(self):
+        cases = (
+            ('training', {'FAKE_TRAIN_EXIT': '7'}, 7),
+            ('missing', {'FAKE_CHECKPOINT': 'missing'}, 1),
+            ('empty', {'FAKE_CHECKPOINT': 'empty'}, 1),
+            ('inference', {'FAKE_INFER_EXIT': '9'}, 9),
+        )
+        for dataset in ('issm', 'anuga'):
+            path = ROOT / f'launchers/PBS/{dataset}/01_history/h1.sh'
+            for case, env, exit_code in cases:
+                with self.subTest(dataset=dataset, case=case):
+                    result, calls = self.run_script(self.spooled_script(path), success=False,
+                        RUN_STAMP=case, PBS_JOBID='77.casper-pbs', **env)
+                    self.assertEqual(result.returncode, exit_code)
+                    train = next(call for call in calls if 'scripts/train.py' in call['args'])
+                    run_name = train['args'][train['args'].index('--run-name') + 1]
+                    train_dir = self.root / 'outputs' / run_name
+                    infer_dir = train_dir.parent / 'inference'
+                    self.assertTrue((train_dir / 'history.json').is_file())
+                    self.assertTrue((train_dir / 'train.log').is_file())
+                    metadata = (train_dir / 'runtime_metadata.txt').read_text()
+                    self.assertIn('training_end_utc=', metadata)
+                    evaluations = [call for call in calls if 'scripts/evaluate.py' in call['args']]
+                    if case == 'inference':
+                        self.assertEqual(len(evaluations), 1)
+                        self.assertIn('fake inference failure', (infer_dir / 'inference.log').read_text())
+                        self.assertEqual((train_dir / 'best.pt').read_bytes(), b'best validation weights')
+                        self.assertEqual(json.loads((train_dir / 'final_metrics.json').read_text()), {'best_epoch': 1})
+                        self.assertIn('inference_end_utc=', metadata)
+                        self.assertIn('inference_exit_status=9', metadata)
+                    else:
+                        self.assertEqual(evaluations, [])
+                        self.assertFalse((infer_dir / 'inference.log').exists())
+                        self.assertNotIn('inference_start_utc=', metadata)
+                        if case == 'training':
+                            self.assertIn('training_exit_status=7', metadata)
+                            self.assertIn('fake training failure', (train_dir / 'launcher.log').read_text())
+                            self.assertEqual((train_dir / 'best.pt').read_bytes(), b'best validation weights')
+                        else:
+                            self.assertIn('Best checkpoint is missing or empty:', result.stderr)
+
+    def test_pbs_distinct_job_ids_and_atomic_run_directory_reservation(self):
+        for dataset in ('issm', 'anuga'):
+            path = self.spooled_script(ROOT / f'launchers/PBS/{dataset}/01_history/h1.sh')
+            directories = []
+            for job_id in ('100.casper-pbs', '101.casper-pbs'):
+                _, calls = self.run_script(path, RUN_STAMP='same_timestamp', PBS_JOBID=job_id)
+                train = next(call for call in calls if 'scripts/train.py' in call['args'])
+                run_name = train['args'][train['args'].index('--run-name') + 1]
+                directories.append(self.root / 'outputs' / run_name)
+            self.assertNotEqual(*directories)
+            _, calls = self.run_script(path, success=False,
+                RUN_STAMP='same_timestamp', PBS_JOBID='100.casper-pbs')
+            self.assertEqual(calls, [])
+            for directory in directories:
+                self.assertEqual((directory / 'best.pt').read_bytes(), b'best validation weights')
+                self.assertTrue((directory.parent / 'inference/metric_table.txt').exists())
+
+    def test_pbs_optional_metadata_failures_do_not_block_workflow(self):
+        unavailable = self.root / 'unavailable tools'
+        unavailable.mkdir()
+        for name in ('git', 'nvidia-smi'):
+            tool = unavailable / name
+            tool.write_text('#!/bin/bash\nexit 23\n')
+            tool.chmod(0o755)
+        for dataset in ('issm', 'anuga'):
+            path = self.spooled_script(ROOT / f'launchers/PBS/{dataset}/01_history/h1.sh')
+            # A directory cannot be opened as a metadata file, even when running as root.
+            path.write_text(path.read_text().replace(
+                'METADATA_FILE="$TRAIN_DIR/runtime_metadata.txt"', 'METADATA_FILE="$TRAIN_DIR"'))
+            result, calls = self.run_script(path, PBS_JOBID='200.casper-pbs',
+                PATH=str(unavailable) + os.pathsep + self.env['PATH'])
+            self.assertIn('git_commit=unavailable', result.stdout)
+            self.assertIn('gpu_model=unavailable', result.stdout)
+            self.assertEqual(sum('scripts/train.py' in call['args'] for call in calls), 1)
+            self.assertEqual(sum('scripts/evaluate.py' in call['args'] for call in calls), 1)
+            self.assertIn('Detailed metric table:\n' + self.metric_table, result.stdout)
 
     def test_active_shell_syntax(self):
         # Historical directories deliberately excluded from active checks.

@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import io
 import json
 import logging
 import shutil
 import sys
 import tempfile
 import unittest
+from contextlib import redirect_stdout
 from copy import deepcopy
 from pathlib import Path
 from unittest.mock import patch
@@ -23,7 +25,10 @@ SCRIPTS_ROOT = PROJECT_ROOT / "scripts"
 if str(SCRIPTS_ROOT) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_ROOT))
 
+import evaluate
+
 from datasets import ADCIRCDataset, ANUGADataset, ISSMDataset
+from datasets.split_utils import make_split_manifest
 from datasets.normalization import FeatureNormalizer
 from models import build_model
 from models.continuous.node_latent_block import LatentNODEFunc
@@ -36,11 +41,14 @@ from training.trainer import Trainer, _truncate_future_horizon
 from utils.anuga_postprocess import generate_anuga_flood_maps
 from utils.eval_artifacts import (
     collect_full_rollout_prediction_bundle,
+    format_metric_table,
     infer_state_channel_names,
     save_evaluation_artifacts,
     summarize_full_rollout_bundle,
     validate_full_rollout_bundle,
 )
+
+from utils.io import load_config_bundle
 
 
 def _base_config() -> dict:
@@ -448,6 +456,70 @@ class SmokeTest(unittest.TestCase):
                     reloaded.eval()
                     with torch.no_grad():
                         torch.testing.assert_close(model(sample), reloaded(sample), rtol=0, atol=0)
+
+    def test_standalone_inference_preserves_table_and_complete_exports_for_both_datasets(self) -> None:
+        for name, dataset_type, source in (
+            ("issm", ISSMDataset, self.root / "PIG_transient_m100_r080.npz"),
+            ("anuga", ANUGADataset, self.root / "sim_000_merged.npz"),
+        ):
+            with self.subTest(dataset=name):
+                validation, test = self.root / f"{name}_val.npz", self.root / f"{name}_test.npz"
+                shutil.copy2(source, validation)
+                shutil.copy2(source, test)
+                config = load_config_bundle([PROJECT_ROOT / "configs/default.yaml"])
+                config.update(_base_config())
+                config["dataset"].update(name=name, data_dir=str(self.root), history_len=2, future_len=2)
+                config["evaluation"]["known_steps"] = 2
+                dataset = dataset_type([source], history_len=2, future_len=2, split="train")
+                normalizer = FeatureNormalizer.fit_from_trajectories(dataset.iter_trajectories())
+                dataset.normalizer = normalizer
+                sample = dataset[0]
+                model = build_model(config, sample.x_static.shape[-1], sample.force_hist.shape[-1], sample.state_hist.shape[-1])
+                train_dir = self.root / f"{name}_run/train"
+                infer_dir = train_dir.parent / "inference"
+                train_dir.mkdir(parents=True)
+                checkpoint = train_dir / "best.pt"
+                torch.save({
+                    "config": config, "normalizer": normalizer.to_dict(), "model_state": model.state_dict(),
+                    "split_manifest": make_split_manifest(
+                        {"train": [source], "val": [validation], "test": [test]}, self.root),
+                }, checkpoint)
+                console = io.StringIO()
+                with patch.object(sys, "argv", [
+                    "evaluate.py", "--checkpoint", str(checkpoint), "--split", "test",
+                    "--device", "cpu", "--amp-mode", "none", "--output-dir", str(infer_dir),
+                ]), patch("datasets.factory.build_splits", side_effect=AssertionError("must not re-split")), \
+                     patch.object(FeatureNormalizer, "fit_from_trajectories", side_effect=AssertionError("must not refit")), \
+                     redirect_stdout(console):
+                    evaluate.main()
+                stem = "best.test.known2.full_rollout"
+                metrics = json.loads((infer_dir / f"{stem}_metrics.json").read_text())
+                table = format_metric_table(metrics["metric_table"])
+                self.assertEqual((infer_dir / "metric_table.txt").read_text(), table + "\n")
+                self.assertIn("Detailed metric table:\n" + table, console.getvalue())
+                self.assertEqual(table.splitlines()[0].split(), [
+                    "scope", "channel", "count", "phys_rmse", "phys_mae", "norm_rmse", "norm_mae"])
+                self.assertEqual(len(metrics["metric_table"]), 8)
+                channels = set(infer_state_channel_names(name, state_dim=3)) | {"aggregate"}
+                for scope in ("whole_rollout", "final_step"):
+                    self.assertEqual({row["channel"] for row in metrics["metric_table"] if row["scope"] == scope}, channels)
+                for suffix in ("metric_table.csv", "summary_table.csv", "leadtime_metrics.csv",
+                               "trajectory_metrics.png", "leadtime_metrics.png", "predictions_meta.json"):
+                    self.assertTrue((infer_dir / f"{stem}_{suffix}").is_file(), suffix)
+                with np.load(infer_dir / f"{stem}_predictions.npz") as predictions:
+                    self.assertEqual(np.unique(predictions["trajectory_idx0"]).tolist(), [2, 3, 4, 5])
+                self.assertEqual(len(metrics["horizon_rmse_curve"]), 4)  # Longer than training K=2.
+                self.assertEqual(metrics["evaluation_metadata"]["amp_mode"], "none")
+                self.assertEqual(metrics["evaluation_metadata"]["config_source"], "checkpoint")
+                if name == "anuga":
+                    flood_dir = infer_dir / f"{stem}_flood_maps"
+                    summary = json.loads((flood_dir / "summary.json").read_text())
+                    self.assertEqual(len(summary["scenarios"]), 1)
+                    timeseries_path = Path(summary["scenarios"][0]["timeseries_npz"])
+                    self.assertTrue(timeseries_path.is_relative_to(infer_dir))
+                    with np.load(timeseries_path) as timeseries:
+                        self.assertEqual(timeseries["prediction_indices0"].tolist(), [2, 3, 4, 5])
+                    self.assertEqual(len(list(flood_dir.rglob("*.png"))), 3)
 
     def test_training_horizon_truncation_keeps_future_fields_aligned(self) -> None:
         anuga = ANUGADataset([self.root / "sim_000_merged.npz"], history_len=3, future_len=2, split="train")

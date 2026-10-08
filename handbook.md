@@ -146,7 +146,9 @@ worker files. Slurm log directories must exist before submission; application
 logs and model outputs are under `logs/` and `outputs/<run_name>/`.
 
 PBS files mirror all 76 shell/Slurm experiments on Casper. Each requests
-one A100 80GB, 16 CPUs, 128GB host memory, and 12 hours under `ULHI0006`.
+one A100 80GB, 16 CPUs, 128GB host memory, and 24 hours under `ULHI0006`,
+with `place=shared`. Job names identify the dataset, phase, and variant
+(e.g. `issm_01_h1` or `anuga_02_a01`).
 They use `NPROC=1` and `torchrun --standalone`; the final
 `configs/runtime/single_a100.yaml` enables accumulation of four micro-batches.
 Protocol batch sizes remain ISSM 8 and ANUGA 1, giving effective batches 32
@@ -167,8 +169,81 @@ qsub launchers/PBS/issm/01_history/h1.sh
 qsub launchers/PBS/anuga/01_history/h1.sh
 ```
 
-PBS joins scheduler stdout/stderr (`#PBS -j oe`); application logs remain in
-`logs/<run_name>.log`. Phases 2–4 still require selecting history in each file.
+PBS joins scheduler stdout/stderr (`#PBS -j oe`). Phases 2–4 still require
+selecting history in each file. Each submission runs training to completion,
+checks that `train/best.pt` is a nonempty regular file, then invokes the existing
+evaluation entrypoint once:
+
+```bash
+"$PYTHON_BIN" scripts/evaluate.py \
+  --checkpoint "$TRAIN_DIR/best.pt" \
+  --split test --device cuda --amp-mode none \
+  --output-dir "$INFER_DIR"
+```
+
+The experiment name retains dataset, phase, H, K, architecture, and TC, followed
+by a UTC timestamp with nanoseconds and the PBS job ID (local PID outside PBS).
+The launcher reserves the run folder atomically and refuses to reuse one that
+already exists. Training uses `--run-name "$RUN_NAME/train"`; inference shares
+the same parent folder:
+
+```text
+outputs/<experiment>_<timestamp>_pbs<job_id>/
+  train/
+    best.pt
+    config.json
+    config_stack.txt
+    split_files.json
+    history.json
+    final_metrics.json
+    train.log
+    launcher.log
+    runtime_metadata.txt
+  inference/
+    inference.log
+    metric_table.txt
+    best.test.known<S>.full_rollout_metrics.json
+    best.test.known<S>.full_rollout_metric_table.csv
+    best.test.known<S>.full_rollout_summary_table.csv
+    best.test.known<S>.full_rollout_predictions.npz
+    best.test.known<S>.full_rollout_predictions_meta.json
+    ... existing curve CSV/NPZ files and plots
+    ... ANUGA flood-map directory and complete per-scenario time series
+```
+
+Evaluation restores the best checkpoint's split manifest, normalizer, history,
+and known steps. ISSM defaults to S=60 and predicts steps 61–240; ANUGA defaults
+to S=8 and predicts through the trajectory end. K never truncates this rollout.
+The training process's existing final TEST metrics remain in `train/`;
+standalone inference additionally exports predictions and analysis artifacts.
+
+`metric_table.txt` contains exactly the existing `format_metric_table` output
+plus a final newline. The same complete table appears under `Detailed metric
+table:` in `inference.log`, with whole-rollout/final-step rows for aggregate
+and individual channels. Existing CSV tables, metric definitions, units,
+precision, rounding, plots, and ANUGA exports are preserved.
+
+Training failure skips inference. Missing/empty `best.pt` fails explicitly.
+Inference failure returns a nonzero job status and retains the completed
+training outputs and inference error log. No cleanup removes partial runs.
+Best-effort metadata records the job ID, Git commit, GPU model, experiment,
+configuration stack, stage start/end UTC timestamps, and exit statuses in
+`train/runtime_metadata.txt` and `train/launcher.log`. Metadata failures do not
+block the experiment. PBS still manages its own joined scheduler output.
+
+The [NCAR Casper queue documentation](https://ncar-hpc-docs.readthedocs.io/en/latest/pbs/charging/#casper-queues)
+sets a 24-hour wall-clock policy. A read-only `qstat -Qf nvgpu casper` check
+found no separate `nvgpu` walltime attribute and a 340-hour routing-queue
+attribute; the routing value does not establish support for a 48-hour GPU job.
+These launchers therefore request the documented 24 hours.
+No complete 300-epoch single-A100 FP32 timing has been measured here. Training,
+validation, final TEST metrics, standalone inference, and plots must all fit
+within that limit. An average full epoch above 288 seconds alone exceeds
+24 hours over 300 epochs; inference and startup reduce the available budget
+further, and later curriculum stages may be slower. Epochs and evaluations
+are never shortened automatically, and these launchers do not implement
+resume/requeue. If a measured experiment exceeds the limit, the complete
+workflow needs a separately approved longer allocation or continuation design.
 
 `legacy-scripts/` contains archived infrastructure for provenance/reference
 only. Do not use those scripts for new formal experiments.

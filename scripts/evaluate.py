@@ -202,7 +202,11 @@ def main() -> None:
     )
 
     logger.info("Full-rollout metrics: %s", summary["metrics"])
-    logger.info("Detailed metric table:\n%s", format_metric_table(summary["metric_table"]))
+    metric_table = format_metric_table(summary["metric_table"])
+    logger.info("Detailed metric table:\n%s", metric_table)
+    metric_table_path = artifact_stem.parent / "metric_table.txt"
+    metric_table_path.write_text(metric_table + "\n", encoding="utf-8")
+    logger.info("Saved readable metric table: %s", metric_table_path)
     logger.info("Saved evaluation artifacts: %s", artifact_paths)
     del bundle
     if dataset_name == "anuga" and not args.skip_anuga_export:

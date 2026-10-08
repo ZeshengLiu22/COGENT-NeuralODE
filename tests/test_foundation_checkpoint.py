@@ -197,13 +197,13 @@ class CheckpointFoundationTest(unittest.TestCase):
         override = self.root / "training.yaml"
         override.write_text(yaml.safe_dump(config))
         paths = [str(PROJECT_ROOT / "configs/default.yaml"), str(override)]
-        argv = ["train.py", "--run-name", "smoke"]
+        argv = ["train.py", "--run-name", "smoke/train"]
         for path in paths:
             argv.extend(["--config", path])
         with patch.object(sys, "argv", argv), patch.object(train, "build_loader", wraps=build_loader) as loader:
             train.main()
         self.assertEqual(loader.call_count, 1)
-        output = self.root / "training/smoke"
+        output = self.root / "training/smoke/train"
         self.assertEqual((output / "config_stack.txt").read_text().splitlines(), paths)
         merged = json.loads((output / "config.json").read_text())
         saved = torch.load(output / "best.pt", map_location="cpu")
