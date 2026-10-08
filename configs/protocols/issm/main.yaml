@@ -6,6 +6,7 @@ dataset:
 model:
   relative_time_scale: 180.0
 training:
+  grad_clip_norm_dtype: fp64
   batch_size: 8
   train_horizon_min: 24
   loss_scale_factor: 100.0
