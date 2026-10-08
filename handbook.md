@@ -78,6 +78,9 @@ does not enable full in-memory caching; the shared default is false.
 All formal launchers use `runtime/issm_fast.yaml` or `runtime/anuga_fast.yaml`
 to explicitly enable trajectory caching with the same loader settings,
 avoiding repeated MAT/NPZ reads and preprocessing for each training series.
+Shared training AMP (`amp.mode`) and evaluation AMP (`evaluation.amp_mode`)
+default to `none` for shell, Slurm, and PBS runs. PBS appends
+`runtime/single_a100.yaml` last to set `training.grad_accum_steps: 4`.
 
 ## The four formal phases
 
@@ -102,13 +105,15 @@ an assumed winner.
 
 ## Standalone formal launchers
 
-Four trees contain one complete file for each experiment:
+Six trees contain one complete file for each experiment:
 
 ```text
 launchers/shell/issm/{01_history,02_architecture,03_training_horizon,04_temporal_consistency}/
 launchers/shell/anuga/{01_history,02_architecture,03_training_horizon,04_temporal_consistency}/
 launchers/slurm/issm/{01_history,02_architecture,03_training_horizon,04_temporal_consistency}/
 launchers/slurm/anuga/{01_history,02_architecture,03_training_horizon,04_temporal_consistency}/
+launchers/PBS/issm/{01_history,02_architecture,03_training_horizon,04_temporal_consistency}/
+launchers/PBS/anuga/{01_history,02_architecture,03_training_horizon,04_temporal_consistency}/
 ```
 
 Each tree has 8 history +16 architecture +8 K +6 TC files. Each directly runs
@@ -139,6 +144,31 @@ Slurm files set the known absolute repository root and `--chdir` explicitly.
 They do not infer paths from the submitted script's location or rely on sibling
 worker files. Slurm log directories must exist before submission; application
 logs and model outputs are under `logs/` and `outputs/<run_name>/`.
+
+PBS files mirror all 76 shell/Slurm experiments on Casper. Each requests
+one A100 80GB, 16 CPUs, 128GB host memory, and 12 hours under `ULHI0006`.
+They use `NPROC=1` and `torchrun --standalone`; the final
+`configs/runtime/single_a100.yaml` enables accumulation of four micro-batches.
+Protocol batch sizes remain ISSM 8 and ANUGA 1, giving effective batches 32
+and 4. Learning rate, cosine scheduler, and 300 epochs stay unchanged.
+
+PBS defaults to `/glade/u/home/zel/scratch/COGENT-NeuralODE` and
+`/glade/work/zel/conda-envs/casper-ml/bin/python`; `PROJECT_ROOT` and
+`PYTHON_BIN` can be passed with `qsub -v` to override these paths. The project
+root is explicit so scheduler spooling does not affect path resolution.
+ISSM uses the existing relative data path. ANUGA adds the path-only
+`configs/runtime/anuga_casper.yaml` before the final single-A100 override,
+selecting `./data/ANUGA/simulation_data_merged` while preserving the shared
+TACC dataset configuration for shell/Slurm.
+
+```bash
+cd /glade/u/home/zel/scratch/COGENT-NeuralODE
+qsub launchers/PBS/issm/01_history/h1.sh
+qsub launchers/PBS/anuga/01_history/h1.sh
+```
+
+PBS joins scheduler stdout/stderr (`#PBS -j oe`); application logs remain in
+`logs/<run_name>.log`. Phases 2–4 still require selecting history in each file.
 
 `legacy-scripts/` contains archived infrastructure for provenance/reference
 only. Do not use those scripts for new formal experiments.

@@ -1,0 +1,4 @@
+# Final override for one A100 80GB, preserving the four-GPU effective batch.
+# Keep protocol batch sizes: ISSM 8 (effective 32), ANUGA 1 (effective 4).
+training:
+  grad_accum_steps: 4

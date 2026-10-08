@@ -43,4 +43,4 @@ distributed:
   backend: nccl
   find_unused_parameters: false
 amp:
-  mode: bf16
+  mode: none

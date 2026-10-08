@@ -1,4 +1,4 @@
-"""Run every standalone formal command against a fake Python, including Slurm spooling."""
+"""Run every standalone formal command against a fake Python, including scheduler spooling."""
 from __future__ import annotations
 import json
 import os
@@ -37,7 +37,8 @@ class LauncherTest(unittest.TestCase):
         self.env = dict(os.environ)
         for name in ('DATASET_CONFIG', 'PROTOCOL_CONFIG', 'MODEL_CONFIG', 'RUNTIME_CONFIG', 'HISTORY_CONFIG',
                      'ARCHITECTURE_CONFIG', 'TRAINING_HORIZON_CONFIG', 'ROLLOUT_START_CONFIG',
-                     'TEMPORAL_CONSISTENCY_CONFIG', 'SLURM_JOB_ID', 'TMUX', 'SESSION_NAME'):
+                     'TEMPORAL_CONSISTENCY_CONFIG', 'SLURM_JOB_ID', 'PBS_JOBID', 'PBS_O_WORKDIR',
+                     'SITE_CONFIG', 'FINAL_CONFIG', 'TMUX', 'SESSION_NAME'):
             self.env.pop(name, None)
         self.env.update(PROJECT_ROOT=str(self.root), PYTHON_BIN=str(self.python),
                         LAUNCHER_CAPTURE=str(self.capture), NPROC='4', CUDA_VISIBLE_DEVICES='',
@@ -73,13 +74,13 @@ class LauncherTest(unittest.TestCase):
                                 f'PROJECT_ROOT="{self.root}"')
         spool = self.root / 'scheduler spool'
         spool.mkdir(exist_ok=True)
-        target = spool / 'slurm_script'
+        target = spool / 'scheduler_script'
         target.write_text(source)
         return target
 
-    def test_exact_four_launcher_trees_and_phase_counts(self):
-        self.assertEqual(len(list((ROOT / 'launchers').rglob('*.sh'))), 152)
-        for execution in ('shell', 'slurm'):
+    def test_exact_six_launcher_trees_and_phase_counts(self):
+        self.assertEqual(len(list((ROOT / 'launchers').rglob('*.sh'))), 228)
+        for execution in ('shell', 'slurm', 'PBS'):
             for dataset in ('issm', 'anuga'):
                 base = ROOT / 'launchers' / execution / dataset
                 self.assertEqual({p.name for p in base.iterdir()}, set(PHASE_COUNTS))
@@ -90,12 +91,17 @@ class LauncherTest(unittest.TestCase):
         for path in sorted((ROOT / 'launchers').rglob('*.sh')):
             execution, dataset, phase, _ = path.relative_to(ROOT / 'launchers').parts
             with self.subTest(script=path.relative_to(ROOT)):
-                result, calls = self.run_script(self.spooled_script(path))
+                result, calls = self.run_script(self.spooled_script(path),
+                    PBS_JOBID='12345.casper-pbs', PBS_O_WORKDIR=str(self.root / 'unrelated submit directory'))
                 training = [call for call in calls if 'scripts/train.py' in call['args']]
                 self.assertEqual(len(training), 1)
                 call = training[0]
                 self.assertEqual(call['cwd'], str(self.root))
-                self.assertIn('--nproc_per_node=4', call['args'])
+                nproc = 1 if execution == 'PBS' else 4
+                self.assertIn(f'--nproc_per_node={nproc}', call['args'])
+                if execution == 'PBS':
+                    self.assertIn('--standalone', call['args'])
+                    self.assertIn('pbs_job_id=12345.casper-pbs', result.stdout)
                 h = int(path.stem[1:]) if phase == '01_history' else 3
                 k = int(path.stem[1:]) if phase == '03_training_horizon' else (180 if dataset == 'issm' else 64)
                 start = 60 if dataset == 'issm' else 8
@@ -107,6 +113,13 @@ class LauncherTest(unittest.TestCase):
                     f'{prefix}/history/h{h}.yaml', f'{prefix}/architecture/{architecture}.yaml',
                     f'{prefix}/training_horizon/k{k}.yaml', f'{prefix}/rollout_start/known{start}.yaml',
                     f'{prefix}/temporal_consistency/{tc}.yaml', f'configs/runtime/{dataset}_fast.yaml']
+                fields = list(CONFIG_FIELDS)
+                if execution == 'PBS':
+                    if dataset == 'anuga':
+                        expected.append('configs/runtime/anuga_casper.yaml')
+                        fields.append('site')
+                    expected.append('configs/runtime/single_a100.yaml')
+                    fields.append('final')
                 self.assertEqual(self.configs(call), expected)
                 cfg = load_config_bundle([self.root / item for item in expected])
                 self.assertEqual(cfg['dataset']['history_len'], h)
@@ -115,13 +128,25 @@ class LauncherTest(unittest.TestCase):
                 self.assertEqual(cfg['dataset']['train_series_per_scenario_per_epoch'], 60 if dataset == 'issm' else 9)
                 self.assertEqual(cfg['model']['relative_time_scale'], 180. if dataset == 'issm' else 65.)
                 self.assertTrue(cfg['dataset']['cache_in_memory'])
+                self.assertEqual(cfg['amp']['mode'], 'none')
+                self.assertEqual(cfg['evaluation']['amp_mode'], 'none')
+                self.assertEqual(cfg['training']['grad_accum_steps'], 4 if execution == 'PBS' else 1)
+                batch = 8 if dataset == 'issm' else 1
+                self.assertEqual(cfg['training']['batch_size'], batch)
+                self.assertEqual(nproc * batch * cfg['training']['grad_accum_steps'], 4 * batch)
+                self.assertEqual(cfg['training']['epochs'], 300)
+                self.assertEqual(cfg['training']['lr'], 0.001)
+                self.assertEqual(cfg['training']['scheduler'], 'cosine')
+                if execution == 'PBS':
+                    data_dir = './data/ISSM/PIG_5000' if dataset == 'issm' else './data/ANUGA/simulation_data_merged'
+                    self.assertEqual(cfg['dataset']['data_dir'], data_dir)
                 if phase != '02_architecture':
                     self.assertEqual(cfg['model']['history_encoder']['history_encoder_type'], 'transformer')
                     self.assertTrue(all(cfg['model'][key] for key in (
                         'use_residual_decoder', 'use_history_in_ode', 'use_relative_time')))
                 if phase != '04_temporal_consistency':
                     self.assertFalse(cfg['training']['temporal_consistency']['enabled'])
-                for field, config in zip(CONFIG_FIELDS, expected):
+                for field, config in zip(fields, expected):
                     self.assertIn(f'{field}_config={config}', result.stdout)
                 self.assertIn('output_dir=', result.stdout)
                 self.assertIn('log_file=', result.stdout)
@@ -136,7 +161,7 @@ class LauncherTest(unittest.TestCase):
                 self.assertEqual(calls, [])
                 self.assertIn('selected Phase-1 history YAML', result.stderr)
 
-    def test_formal_scripts_are_standalone_and_slurm_roots_are_explicit(self):
+    def test_formal_scripts_are_standalone_and_scheduler_roots_are_explicit(self):
         for path in (ROOT / 'launchers').rglob('*.sh'):
             source = path.read_text()
             with self.subTest(script=path.relative_to(ROOT)):
@@ -147,10 +172,11 @@ class LauncherTest(unittest.TestCase):
                 self.assertNotIn('train_issm.sh', source)
                 self.assertNotIn('train_anuga.sh', source)
                 self.assertIn('scripts/train.py', source)
-                if 'slurm' in path.parts:
+                if 'slurm' in path.parts or 'PBS' in path.parts:
                     self.assertNotIn('BASH_SOURCE', source)
                     self.assertNotIn('$0', source)
                     self.assertNotIn('dirname', source)
+                if 'slurm' in path.parts:
                     self.assertRegex(source, r'PROJECT_ROOT="/(?:home1|scratch)/')
                     self.assertIn('#SBATCH --ntasks-per-node=4', source)
                     self.assertIn('#SBATCH --cpus-per-task=24', source)
@@ -161,6 +187,18 @@ class LauncherTest(unittest.TestCase):
                         self.assertIn('/work2/09575/', source)
                     else:
                         self.assertIn('/work/09575/', source)
+                elif 'PBS' in path.parts:
+                    self.assertTrue(source.startswith('#!/bin/bash -l\n'))
+                    self.assertEqual([line for line in source.splitlines() if line.startswith('#PBS')], [
+                        '#PBS -N cogent_a100', '#PBS -A ULHI0006', '#PBS -q casper',
+                        '#PBS -l select=1:ncpus=16:mpiprocs=1:mem=128GB:ngpus=1:gpu_type=a100_80gb',
+                        '#PBS -l walltime=12:00:00', '#PBS -j oe'])
+                    self.assertIn('PROJECT_ROOT="${PROJECT_ROOT:-/glade/u/home/zel/scratch/COGENT-NeuralODE}"', source)
+                    self.assertIn('/glade/work/zel/conda-envs/casper-ml/bin/python', source)
+                    self.assertIn('\nNPROC=1\n', source)
+                    self.assertNotIn('SLURM', source)
+                    self.assertNotIn('#SBATCH', source)
+                    self.assertTrue(os.access(path, os.X_OK))
 
     def test_active_shell_syntax(self):
         # Historical directories deliberately excluded from active checks.
