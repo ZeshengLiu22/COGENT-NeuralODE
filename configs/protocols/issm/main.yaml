@@ -5,6 +5,8 @@ dataset:
   future_len: 180
 model:
   relative_time_scale: 180.0
+  continuous:
+    zero_init_output: true
 training:
   grad_clip_norm_dtype: fp64
   batch_size: 8

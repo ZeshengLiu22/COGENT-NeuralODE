@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 import io
 from pathlib import Path
 import sys
@@ -18,6 +19,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from models import build_model
+from models.common.gnn_blocks import GraphNetwork
 from models.continuous.node_latent_block import LatentNODEFunc
 from training.losses import rollout_mse
 from training.trainer import Trainer, _clip_grad_norm_fp64
@@ -54,6 +56,32 @@ class NumericalStabilityTest(unittest.TestCase):
                             derivative, torch.zeros_like(derivative), rtol=0, atol=0,
                         )
 
+    def test_disabled_or_missing_flag_preserves_original_random_initialization(self):
+        for gnn_type in ("sage", "gcn", "graphconv"):
+            config = issm_config()
+            continuous = config["model"]["continuous"]
+            continuous["gnn_type"] = gnn_type
+            torch.manual_seed(42)
+            reference = GraphNetwork(
+                input_dim=4 + 2 + 3 + 5 + 1, hidden_dim=continuous["hidden_dim"],
+                output_dim=4, num_layers=continuous["num_layers"], layer_type=gnn_type,
+                activation=continuous["activation"], dropout=continuous["dropout"],
+            )
+            for enabled in (None, False):
+                with self.subTest(gnn_type=gnn_type, zero_init_output=enabled):
+                    if enabled is None:
+                        continuous.pop("zero_init_output", None)
+                    else:
+                        continuous["zero_init_output"] = enabled
+                    torch.manual_seed(42)
+                    dynamics = LatentNODEFunc(4, 2, 3, 5, config)
+                    for name, value in reference.state_dict().items():
+                        torch.testing.assert_close(dynamics.net.state_dict()[name], value, rtol=0, atol=0)
+                    self.assertGreater(
+                        sum(float(p.detach().abs().sum()) for p in dynamics.net.convs[-1].parameters()),
+                        0.0,
+                    )
+
     def test_seed42_h1_h8_k180_initial_rollout_backward_and_checkpoint(self):
         # Preserve the formal model, solver, loss scaling, batch size and LR;
         # only the normalized input graphs are small synthetic fixtures.
@@ -61,6 +89,7 @@ class NumericalStabilityTest(unittest.TestCase):
             with self.subTest(history_len=history_len):
                 torch.manual_seed(42)
                 config = issm_config(history_len)
+                self.assertTrue(config["model"]["continuous"]["zero_init_output"])
                 horizon = config["dataset"]["future_len"]
                 samples = [
                     Data(
@@ -86,48 +115,68 @@ class NumericalStabilityTest(unittest.TestCase):
                     )
                     return latent
 
-                with patch("models.node2_model.odeint", side_effect=check_latent_rollout):
-                    prediction = model(batch)
-                self.assertTrue(torch.isfinite(prediction).all())
-                scale = config["training"]["loss_scale_factor"]
-                loss = rollout_mse(prediction.float() * scale, batch.y_future.float() * scale)
-                self.assertTrue(torch.isfinite(loss))
-                loss.backward()
-                for parameter in model.parameters():
-                    self.assertEqual(parameter.dtype, torch.float32)
-                    if parameter.grad is not None:
-                        self.assertTrue(torch.isfinite(parameter.grad).all())
-                        self.assertEqual(parameter.grad.dtype, torch.float32)
-                for module in (model.history_encoder, model.init_mlp, model.dynamics.net.convs[-1], model.decoder):
-                    gradients = [p.grad for p in module.parameters() if p.grad is not None]
-                    self.assertTrue(gradients)
-                    self.assertGreater(sum(float(g.abs().sum()) for g in gradients), 0.0)
-                for parameter in model.dynamics.net.convs[-1].parameters():
-                    self.assertIsNotNone(parameter.grad)
-                    self.assertGreater(float(parameter.grad.abs().sum()), 0.0)
-
                 optimizer = torch.optim.AdamW(
                     model.parameters(), lr=config["training"]["lr"],
                     weight_decay=config["training"]["weight_decay"],
                 )
-                norm = _clip_grad_norm_fp64(
-                    list(model.parameters()), config["training"]["max_grad_norm"],
-                )
-                self.assertTrue(torch.isfinite(norm))
-                optimizer.step()
-                self.assertTrue(all(torch.isfinite(p).all() for p in model.parameters()))
-                self.assertGreater(
-                    sum(float(p.detach().abs().sum()) for p in model.dynamics.net.convs[-1].parameters()),
-                    0.0,
-                )
+                # Check initialization and the state after each of three updates.
+                for updates_done in range(4):
+                    optimizer.zero_grad(set_to_none=True)
+                    if updates_done == 0:
+                        with patch("models.node2_model.odeint", side_effect=check_latent_rollout):
+                            prediction = model(batch)
+                    else:
+                        prediction = model(batch)
+                    self.assertTrue(torch.isfinite(prediction).all())
+                    scale = config["training"]["loss_scale_factor"]
+                    loss = rollout_mse(prediction.float() * scale, batch.y_future.float() * scale)
+                    self.assertTrue(torch.isfinite(loss))
+                    loss.backward()
+                    for parameter in model.parameters():
+                        self.assertEqual(parameter.dtype, torch.float32)
+                        if parameter.grad is not None:
+                            self.assertTrue(torch.isfinite(parameter.grad).all())
+                            self.assertEqual(parameter.grad.dtype, torch.float32)
+                    for module in (model.history_encoder, model.init_mlp, model.dynamics.net.convs[-1], model.decoder):
+                        gradients = [p.grad for p in module.parameters() if p.grad is not None]
+                        self.assertTrue(gradients)
+                        self.assertGreater(sum(float(g.abs().sum()) for g in gradients), 0.0)
+                    for parameter in model.dynamics.net.convs[-1].parameters():
+                        self.assertIsNotNone(parameter.grad)
+                        self.assertGreater(float(parameter.grad.abs().sum()), 0.0)
+                    if updates_done > 0:
+                        for conv in model.dynamics.net.convs[:-1]:
+                            gradients = [p.grad for p in conv.parameters() if p.grad is not None]
+                            self.assertTrue(gradients)
+                            self.assertGreater(sum(float(g.abs().sum()) for g in gradients), 0.0)
+                    if updates_done == 3:
+                        break
+                    norm = _clip_grad_norm_fp64(
+                        list(model.parameters()), config["training"]["max_grad_norm"],
+                    )
+                    self.assertTrue(torch.isfinite(norm))
+                    optimizer.step()
+                    self.assertTrue(all(torch.isfinite(p).all() for p in model.parameters()))
+                    self.assertGreater(
+                        sum(float(p.detach().abs().sum()) for p in model.dynamics.net.convs[-1].parameters()),
+                        0.0,
+                    )
 
                 checkpoint = io.BytesIO()
                 torch.save({"model_state": model.state_dict()}, checkpoint)
-                checkpoint.seek(0)
-                restored = build_model(config, 4, 2, 3)
-                restored.load_state_dict(torch.load(checkpoint, weights_only=True)["model_state"])
-                for name, value in model.state_dict().items():
-                    torch.testing.assert_close(restored.state_dict()[name], value, rtol=0, atol=0)
+                for enabled in (None, False, True):
+                    with self.subTest(checkpoint_zero_init_output=enabled):
+                        restore_config = deepcopy(config)
+                        continuous = restore_config["model"]["continuous"]
+                        if enabled is None:
+                            continuous.pop("zero_init_output", None)
+                        else:
+                            continuous["zero_init_output"] = enabled
+                        restored = build_model(restore_config, 4, 2, 3)
+                        checkpoint.seek(0)
+                        restored.load_state_dict(torch.load(checkpoint, weights_only=True)["model_state"])
+                        for name, value in model.state_dict().items():
+                            torch.testing.assert_close(restored.state_dict()[name], value, rtol=0, atol=0)
 
     def test_fp64_norm_clips_large_finite_fp32_gradients(self):
         parameters = [torch.nn.Parameter(torch.zeros(2)), torch.nn.Parameter(torch.zeros(1))]
@@ -166,13 +215,15 @@ class NumericalStabilityTest(unittest.TestCase):
                 for parameter, original in zip(model.parameters(), before):
                     torch.testing.assert_close(parameter.grad, original, rtol=0, atol=0, equal_nan=True)
 
-    def test_issm_overlays_preserve_fp64_norm_selection(self):
+    def test_issm_overlays_preserve_stability_options(self):
         base = [
             ROOT / "configs/default.yaml",
             ROOT / "configs/datasets/issm.yaml",
             ROOT / "configs/protocols/issm/main.yaml",
             ROOT / "configs/models/node2.yaml",
         ]
+        expected_continuous = load_config_bundle([base[-1]])["model"]["continuous"]
+        expected_continuous["zero_init_output"] = True
         overlays = sorted((ROOT / "configs/ablations/issm").rglob("*.yaml"))
         for overlay in overlays:
             with self.subTest(overlay=overlay):
@@ -180,6 +231,8 @@ class NumericalStabilityTest(unittest.TestCase):
                     *base, overlay, ROOT / "configs/runtime/issm_fast.yaml",
                     ROOT / "configs/runtime/single_a100.yaml",
                 ])
+                self.assertEqual(config["model"]["continuous"], expected_continuous)
+                self.assertEqual(config["model"]["relative_time_scale"], 180.0)
                 self.assertEqual(config["training"]["grad_clip_norm_dtype"], "fp64")
                 self.assertEqual(config["training"]["max_grad_norm"], 1.0)
                 self.assertEqual(config["training"]["grad_accum_steps"], 4)
