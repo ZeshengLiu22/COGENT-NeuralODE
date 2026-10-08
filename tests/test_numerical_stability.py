@@ -56,6 +56,22 @@ class NumericalStabilityTest(unittest.TestCase):
                             derivative, torch.zeros_like(derivative), rtol=0, atol=0,
                         )
 
+    def test_issm_defaults_to_zero_without_protocol_overlay(self):
+        for dataset in ("issm", "anuga", "adcirc"):
+            with self.subTest(dataset=dataset):
+                config = load_config_bundle([
+                    ROOT / "configs/default.yaml",
+                    ROOT / f"configs/datasets/{dataset}.yaml",
+                    ROOT / "configs/models/node2.yaml",
+                ])
+                self.assertNotIn("zero_init_output", config["model"]["continuous"])
+                model = build_model(config, 4, 2, 3)
+                output_is_zero = all(
+                    torch.count_nonzero(p).item() == 0
+                    for p in model.dynamics.net.convs[-1].parameters()
+                )
+                self.assertEqual(output_is_zero, dataset == "issm")
+
     def test_disabled_or_missing_flag_preserves_original_random_initialization(self):
         for gnn_type in ("sage", "gcn", "graphconv"):
             config = issm_config()
@@ -67,8 +83,12 @@ class NumericalStabilityTest(unittest.TestCase):
                 output_dim=4, num_layers=continuous["num_layers"], layer_type=gnn_type,
                 activation=continuous["activation"], dropout=continuous["dropout"],
             )
-            for enabled in (None, False):
-                with self.subTest(gnn_type=gnn_type, zero_init_output=enabled):
+            for enabled, dataset in ((False, "issm"), (None, "anuga"), (None, "adcirc"), (None, None)):
+                if dataset is None:
+                    config.pop("dataset", None)
+                else:
+                    config["dataset"]["name"] = dataset
+                with self.subTest(gnn_type=gnn_type, zero_init_output=enabled, dataset=dataset):
                     if enabled is None:
                         continuous.pop("zero_init_output", None)
                     else:

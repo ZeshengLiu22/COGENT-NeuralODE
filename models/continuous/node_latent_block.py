@@ -53,7 +53,9 @@ class LatentNODEFunc(nn.Module):
         )
         # The last graph convolution is the effective dz/dt projection,
         # including both neighbor and root paths for SAGE/GraphConv.
-        if continuous_cfg.get("zero_init_output", False):
+        if continuous_cfg.get(
+            "zero_init_output", config.get("dataset", {}).get("name") == "issm"
+        ):
             for parameter in self.net.convs[-1].parameters():
                 nn.init.zeros_(parameter)
 
