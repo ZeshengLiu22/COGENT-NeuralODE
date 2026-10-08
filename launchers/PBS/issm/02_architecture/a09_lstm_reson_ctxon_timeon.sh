@@ -1,13 +1,15 @@
 #!/bin/bash -l
 #PBS -N issm_02_a09
 #PBS -A ULHI0006
-#PBS -q casper
-#PBS -l select=1:ncpus=16:mpiprocs=1:mem=128GB:ngpus=1:gpu_type=a100_80gb
-#PBS -l place=shared
-#PBS -l walltime=24:00:00
+#PBS -q main
+#PBS -l select=1:ncpus=64:mpiprocs=4:ompthreads=1:ngpus=4
+#PBS -l place=excl
+#PBS -l walltime=12:00:00
 #PBS -j oe
+#PBS -m abe
+#PBS -M zel220@lehigh.edu
 
-# One A100 80GB; torchrun starts one rank and the final YAML accumulates four batches.
+# One exclusive Derecho GPU node; torchrun starts four ranks with accumulation 2.
 # ISSM phase 02: a09_lstm_reson_ctxon_timeon; H=selected after Phase 1, K=180, S=60.
 # Architecture: lstm, residual ON, ODE history ON, relative time ON.
 # TC0; fixed training series/scenario/epoch = 60.
@@ -28,9 +30,10 @@ HISTORY_TAG="${HISTORY_TAG%.yaml}"
 
 PROJECT_ROOT="${PROJECT_ROOT:-/glade/u/home/zel/scratch/COGENT-NeuralODE}"
 cd "$PROJECT_ROOT"
-# Direct interpreter invocation uses the Casper casper-ml environment.
-PYTHON_BIN="${PYTHON_BIN:-/glade/work/zel/conda-envs/casper-ml/bin/python}"
-NPROC=1
+# Use the existing Derecho environment and initialize the node's CUDA support.
+module load cuda
+PYTHON_BIN="${PYTHON_BIN:-/glade/work/zel/conda-envs/derecho-ml/bin/python}"
+NPROC=4
 DEFAULT_CONFIG="configs/default.yaml"
 DATASET_CONFIG="configs/datasets/issm.yaml"
 PROTOCOL_CONFIG="configs/protocols/issm/main.yaml"
@@ -40,7 +43,7 @@ TRAINING_HORIZON_CONFIG="configs/ablations/issm/training_horizon/k180.yaml"
 ROLLOUT_START_CONFIG="configs/ablations/issm/rollout_start/known60.yaml"
 TEMPORAL_CONSISTENCY_CONFIG="configs/ablations/issm/temporal_consistency/tc0.yaml"
 RUNTIME_CONFIG="configs/runtime/issm_fast.yaml"
-FINAL_CONFIG="configs/runtime/single_a100.yaml"
+FINAL_CONFIG="configs/runtime/issm_derecho.yaml"
 RUN_STAMP="${RUN_STAMP:-$(date -u +%Y%m%d_%H%M%S_%N)}"
 RUN_NAME="issm_02_architecture_${HISTORY_TAG}_k180_a09_lstm_reson_ctxon_timeon_tc0_${RUN_STAMP}_pbs${PBS_JOBID:-local_$$}"
 RUN_DIR="$PROJECT_ROOT/outputs/$RUN_NAME"

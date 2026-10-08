@@ -1,6 +1,6 @@
 dataset:
   name: anuga
-  data_dir: /home1/09575/zeshengliu/scratch/COGENT-NeuralODE/data/ANUGA/simulation_data_merged
+  data_dir: ./data/ANUGA/simulation_data_merged
   file_patterns:
   - sim_*_merged.npz
   anuga: {}

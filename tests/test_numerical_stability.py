@@ -249,13 +249,14 @@ class NumericalStabilityTest(unittest.TestCase):
             with self.subTest(overlay=overlay):
                 config = load_config_bundle([
                     *base, overlay, ROOT / "configs/runtime/issm_fast.yaml",
-                    ROOT / "configs/runtime/single_a100.yaml",
+                    ROOT / "configs/runtime/issm_derecho.yaml",
                 ])
                 self.assertEqual(config["model"]["continuous"], expected_continuous)
                 self.assertEqual(config["model"]["relative_time_scale"], 180.0)
                 self.assertEqual(config["training"]["grad_clip_norm_dtype"], "fp64")
                 self.assertEqual(config["training"]["max_grad_norm"], 1.0)
-                self.assertEqual(config["training"]["grad_accum_steps"], 4)
+                self.assertEqual(config["training"]["batch_size"], 4)
+                self.assertEqual(config["training"]["grad_accum_steps"], 2)
 
 
 if __name__ == "__main__":

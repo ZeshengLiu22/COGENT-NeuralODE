@@ -1,3 +1,0 @@
-# PBS-only data relocation; paths resolve from the launcher's PROJECT_ROOT.
-dataset:
-  data_dir: ./data/ANUGA/simulation_data_merged

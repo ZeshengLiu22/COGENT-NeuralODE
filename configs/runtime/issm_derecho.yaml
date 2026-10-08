@@ -1,0 +1,5 @@
+# Final override for ISSM on Derecho; append after all other configs.
+# Per-rank effective batch stays 8: 4 samples x 2 accumulation steps.
+training:
+  batch_size: 4
+  grad_accum_steps: 2

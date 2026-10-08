@@ -1,13 +1,15 @@
 #!/bin/bash -l
 #PBS -N anuga_03_k8
 #PBS -A ULHI0006
-#PBS -q casper
-#PBS -l select=1:ncpus=16:mpiprocs=1:mem=128GB:ngpus=1:gpu_type=a100_80gb
-#PBS -l place=shared
-#PBS -l walltime=24:00:00
+#PBS -q main
+#PBS -l select=1:ncpus=64:mpiprocs=4:ompthreads=1:ngpus=4
+#PBS -l place=excl
+#PBS -l walltime=12:00:00
 #PBS -j oe
+#PBS -m abe
+#PBS -M zel220@lehigh.edu
 
-# One A100 80GB; torchrun starts one rank and the final YAML accumulates four batches.
+# One exclusive Derecho GPU node; torchrun starts four ranks with accumulation 1.
 # ANUGA phase 03: k8; H=selected after Phase 1, K=8, S=8.
 # Architecture: transformer, residual ON, ODE history ON, relative time ON.
 # TC0; fixed training series/scenario/epoch = 9.
@@ -28,9 +30,10 @@ HISTORY_TAG="${HISTORY_TAG%.yaml}"
 
 PROJECT_ROOT="${PROJECT_ROOT:-/glade/u/home/zel/scratch/COGENT-NeuralODE}"
 cd "$PROJECT_ROOT"
-# Direct interpreter invocation uses the Casper casper-ml environment.
-PYTHON_BIN="${PYTHON_BIN:-/glade/work/zel/conda-envs/casper-ml/bin/python}"
-NPROC=1
+# Use the existing Derecho environment and initialize the node's CUDA support.
+module load cuda
+PYTHON_BIN="${PYTHON_BIN:-/glade/work/zel/conda-envs/derecho-ml/bin/python}"
+NPROC=4
 DEFAULT_CONFIG="configs/default.yaml"
 DATASET_CONFIG="configs/datasets/anuga.yaml"
 PROTOCOL_CONFIG="configs/protocols/anuga/main.yaml"
@@ -40,8 +43,6 @@ TRAINING_HORIZON_CONFIG="configs/ablations/anuga/training_horizon/k8.yaml"
 ROLLOUT_START_CONFIG="configs/ablations/anuga/rollout_start/known8.yaml"
 TEMPORAL_CONSISTENCY_CONFIG="configs/ablations/anuga/temporal_consistency/tc0.yaml"
 RUNTIME_CONFIG="configs/runtime/anuga_fast.yaml"
-SITE_CONFIG="configs/runtime/anuga_casper.yaml"
-FINAL_CONFIG="configs/runtime/single_a100.yaml"
 RUN_STAMP="${RUN_STAMP:-$(date -u +%Y%m%d_%H%M%S_%N)}"
 RUN_NAME="anuga_03_training_horizon_${HISTORY_TAG}_k8_full_tc0_${RUN_STAMP}_pbs${PBS_JOBID:-local_$$}"
 RUN_DIR="$PROJECT_ROOT/outputs/$RUN_NAME"
@@ -94,8 +95,6 @@ export TORCH_DISTRIBUTED_DEBUG="${TORCH_DISTRIBUTED_DEBUG:-OFF}"
   echo "rollout_start_config=$ROLLOUT_START_CONFIG"
   echo "temporal_consistency_config=$TEMPORAL_CONSISTENCY_CONFIG"
   echo "runtime_config=$RUNTIME_CONFIG"
-  echo "site_config=$SITE_CONFIG"
-  echo "final_config=$FINAL_CONFIG"
 } | tee -a "$LOG_FILE" "$METADATA_FILE" || true
 
 "$PYTHON_BIN" -c "import sys, torch; print('python:', sys.executable); print('torch:', torch.__version__); print('cuda:', torch.cuda.is_available()); print('device_count:', torch.cuda.device_count())" 2>&1 | tee -a "$LOG_FILE"
@@ -115,8 +114,6 @@ if "$PYTHON_BIN" -m torch.distributed.run \
   --config "$ROLLOUT_START_CONFIG" \
   --config "$TEMPORAL_CONSISTENCY_CONFIG" \
   --config "$RUNTIME_CONFIG" \
-  --config "$SITE_CONFIG" \
-  --config "$FINAL_CONFIG" \
   --run-name "$RUN_NAME/train" 2>&1 | tee -a "$LOG_FILE"; then
   record_metadata "training_end_utc=$(utc_now)" "training_exit_status=0"
 else

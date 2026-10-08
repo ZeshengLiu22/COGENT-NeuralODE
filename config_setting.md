@@ -9,7 +9,7 @@ Filenames do not select behavior.
 
 | Layer, in merge order | Responsibility |
 | --- | --- |
-| `configs/default.yaml` | Shared seed/output, safe loader defaults, normalization metadata, optimizer, horizon sampling/curriculum, TC off, evaluation metric/AMP, distributed settings |
+| `configs/default.yaml` | Shared seed/output, loader defaults with trajectory caching enabled, normalization metadata, optimizer, horizon sampling/curriculum, TC off, evaluation metric/AMP, distributed settings |
 | `configs/datasets/<dataset>.yaml` | Dataset identity, path, file patterns, adapter, split |
 | `configs/protocols/<dataset>/main.yaml` | H/K/S, per-scenario B, fixed time scale, batch size, minimum horizon, loss scale |
 | `configs/models/node2.yaml` | NODE2 dimensions, architecture defaults, solver/interpolation |
@@ -18,29 +18,39 @@ Filenames do not select behavior.
 | `configs/ablations/<dataset>/training_horizon/kN.yaml` | Maximum training future K |
 | `configs/ablations/<dataset>/rollout_start/knownN.yaml` | Evaluation start S |
 | `configs/ablations/<dataset>/temporal_consistency/tcN.yaml` | TC0–TC5 |
-| `configs/runtime/{issm,anuga}_fast.yaml` | Formal dataset-specific trajectory cache opt-in, workers, pinned memory, prefetching, persistent-worker request |
-| `configs/runtime/anuga_casper.yaml` | PBS ANUGA only: relocate data to the repository-relative Casper directory |
-| `configs/runtime/single_a100.yaml` | PBS final override: `training.grad_accum_steps: 4` for one A100 80GB |
+| `configs/runtime/{issm,anuga}_fast.yaml` | Formal dataset-specific workers, pinned memory, prefetching, persistent-worker request |
+| `configs/runtime/single_a100.yaml` | Optional single-A100 override: `training.grad_accum_steps: 4`; unused by the formal launchers |
+| `configs/runtime/issm_derecho.yaml` | ISSM on Derecho final override: per-rank `training.batch_size: 4`, `training.grad_accum_steps: 2` |
 
 Each formal stack includes control overlays even when they match protocol
 defaults. Dataset-scoped ISSM and ANUGA files are intentionally explicit and
 duplicated. No shared architecture/TC tree hides formal provenance.
 
-The safe shared loader default is `dataset.cache_in_memory: false`.
-`runtime/fast.yaml` does not override it and contains no scientific settings.
+The shared default is `dataset.cache_in_memory: true`, reusing full trajectories
+across series and epochs, including runs with no runtime overlay.
 Formal ISSM/ANUGA launchers and the top-level `train_issm.sh`/`train_anuga.sh`
-defaults select `runtime/issm_fast.yaml` or
-`runtime/anuga_fast.yaml`, which retain the same loader settings and explicitly
-set `cache_in_memory: true` to reuse full trajectories across series and epochs.
+defaults select `runtime/issm_fast.yaml` or `runtime/anuga_fast.yaml` for four
+workers, pinned memory, prefetching, and persistent-worker requests. These
+loader overlays inherit trajectory caching from `configs/default.yaml`.
 Epoch resampling requires workers to see current series indices, so training
 disables persistent workers when needed despite the runtime request.
 
 Shared `amp.mode` and `evaluation.amp_mode` are both `none`, disabling AMP
-for shell, Slurm, and PBS. Shell/Slurm retain four ranks with accumulation 1;
-PBS uses one rank with accumulation 4, appended after every other YAML.
-Protocol batch sizes remain ISSM 8 and ANUGA 1 (effective batches 32 and 4).
-The single-A100 overlay changes no model, learning-rate, scheduler, epoch,
-loader, or series-budget settings.
+for shell, Slurm, and PBS. All formal launchers use four ranks by default:
+
+| Launchers | Dataset | Batch per rank | Accumulation | Effective global batch |
+| --- | --- | --- | --- | --- |
+| shell / Slurm | ISSM | 8 | 1 | 32 |
+| Derecho PBS | ISSM | 4 | 2 | 32 |
+| shell / Slurm / Derecho PBS | ANUGA | 1 | 1 | 4 |
+
+Every ISSM PBS launcher appends `configs/runtime/issm_derecho.yaml` after all
+other configs. It changes only batch size and accumulation; all selected H/K/S,
+architecture, TC, learning-rate, scheduler, epoch, and series-budget settings
+come from the preceding layers. ANUGA PBS uses its protocol batch size and
+shared accumulation default. For ad-hoc ISSM runs on Derecho, append the same
+override explicitly. `single_a100.yaml` remains available for optional
+single-GPU use and is not selected by the formal launchers.
 
 `config_stack.txt` records ordered supplied paths; `config.json` records
 merged values including the optional CLI curriculum override. Checkpoints
@@ -151,12 +161,11 @@ ISSM uses `./data/ISSM/PIG_5000` and rate-modulo splitting: modulo 20, validatio
 remainder 0, test remainder 10. The main protocol has batch 8, minimum horizon 24,
 and loss scale 100.
 
-Shell/Slurm ANUGA preserves the absolute data path ending in
-`ANUGA/simulation_data_merged`, merged-file pattern, and 0.6/0.2/0.2 random split
-with seed 42. It has batch 1, minimum horizon 8, and loss scale 1. Normalization
-uses training trajectories only and is restored from checkpoints. PBS appends
-`runtime/anuga_casper.yaml` to use `./data/ANUGA/simulation_data_merged`
-relative to `PROJECT_ROOT`, followed by `runtime/single_a100.yaml` last.
+ANUGA defaults to `./data/ANUGA/simulation_data_merged` in every launcher,
+relative to `PROJECT_ROOT`, with the merged-file pattern and 0.6/0.2/0.2 random
+split seeded at 42. It has batch 1, minimum horizon 8, and loss scale 1.
+Normalization uses training trajectories only and is restored from checkpoints.
+Derecho PBS runs ANUGA on four GPUs with accumulation 1.
 
 ADCIRC has a dataset configuration but no supplied formal main protocol.
 Ad-hoc ADCIRC use requires explicit temporal/training settings.

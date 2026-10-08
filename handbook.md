@@ -73,14 +73,14 @@ configs/ablations/anuga/
 Formal files include all controls even when they match protocol defaults.
 Every launcher prints the complete stack including `protocol_config`.
 Every training run saves authoritative ordered `config_stack.txt` beside
-merged `config.json`. `runtime/fast.yaml` controls DataLoader performance and
-does not enable full in-memory caching; the shared default is false.
-All formal launchers use `runtime/issm_fast.yaml` or `runtime/anuga_fast.yaml`
-to explicitly enable trajectory caching with the same loader settings,
-avoiding repeated MAT/NPZ reads and preprocessing for each training series.
+merged `config.json`. Full in-memory trajectory caching is enabled in
+`configs/default.yaml`, avoiding repeated MAT/NPZ reads and preprocessing for
+each training series. All formal launchers use `runtime/issm_fast.yaml` or
+`runtime/anuga_fast.yaml` for worker, pinned-memory, and prefetch settings.
 Shared training AMP (`amp.mode`) and evaluation AMP (`evaluation.amp_mode`)
-default to `none` for shell, Slurm, and PBS runs. PBS appends
-`runtime/single_a100.yaml` last to set `training.grad_accum_steps: 4`.
+default to `none` for shell, Slurm, and PBS runs. ISSM PBS appends
+`runtime/issm_derecho.yaml` last for batch size 4 and accumulation 2.
+ANUGA PBS uses batch size 1 and accumulation 1; both launch four ranks.
 
 ## The four formal phases
 
@@ -145,29 +145,37 @@ They do not infer paths from the submitted script's location or rely on sibling
 worker files. Slurm log directories must exist before submission; application
 logs and model outputs are under `logs/` and `outputs/<run_name>/`.
 
-PBS files mirror all 76 shell/Slurm experiments on Casper. Each requests
-one A100 80GB, 16 CPUs, 128GB host memory, and 24 hours under `ULHI0006`,
-with `place=shared`. Job names identify the dataset, phase, and variant
-(e.g. `issm_01_h1` or `anuga_02_a01`).
-They use `NPROC=1` and `torchrun --standalone`; the final
-`configs/runtime/single_a100.yaml` enables accumulation of four micro-batches.
-Protocol batch sizes remain ISSM 8 and ANUGA 1, giving effective batches 32
-and 4. Learning rate, cosine scheduler, and 300 epochs stay unchanged.
+PBS files mirror all 76 shell/Slurm experiments on Derecho. Each requests
+one exclusive GPU node in `main` under `ULHI0006`, with 64 CPUs, four A100 40GB
+GPUs, and `walltime=12:00:00`. The select request is
+`select=1:ncpus=64:mpiprocs=4:ompthreads=1:ngpus=4`, with `place=excl`;
+host memory uses the GPU queue's full-node default (currently 487GB).
+Job names identify the dataset, phase, and variant (e.g. `issm_01_h1`).
+They load the `cuda` module and use `NPROC=4` with `torchrun --standalone`.
+ISSM appends `configs/runtime/issm_derecho.yaml` last for per-rank batch size 4
+and accumulation 2, giving effective global batch 32. ANUGA uses batch size 1
+and accumulation 1, giving effective global batch 4. Each experiment retains
+its selected K, H, S, architecture, TC, learning rate, scheduler, and 300 epochs.
 
 PBS defaults to `/glade/u/home/zel/scratch/COGENT-NeuralODE` and
-`/glade/work/zel/conda-envs/casper-ml/bin/python`; `PROJECT_ROOT` and
+`/glade/work/zel/conda-envs/derecho-ml/bin/python`; `PROJECT_ROOT` and
 `PYTHON_BIN` can be passed with `qsub -v` to override these paths. The project
 root is explicit so scheduler spooling does not affect path resolution.
-ISSM uses the existing relative data path. ANUGA adds the path-only
-`configs/runtime/anuga_casper.yaml` before the final single-A100 override,
-selecting `./data/ANUGA/simulation_data_merged` while preserving the shared
-TACC dataset configuration for shell/Slurm.
+Both dataset configurations use paths relative to `PROJECT_ROOT`: ISSM uses
+`./data/ISSM/PIG_5000`, and ANUGA uses `./data/ANUGA/simulation_data_merged`
+for shell, Slurm, and PBS runs.
 
 ```bash
 cd /glade/u/home/zel/scratch/COGENT-NeuralODE
 qsub launchers/PBS/issm/01_history/h1.sh
 qsub launchers/PBS/anuga/01_history/h1.sh
 ```
+
+Every PBS script sets `#PBS -m abe` and `#PBS -M zel220@lehigh.edu`.
+The scheduler emails that address when the job begins, ends, or is aborted,
+including training/inference failures and walltime termination. To choose a
+different recipient for a submission, use `qsub -M address@example.com <script>`.
+These are the standard [PBS mail directives](https://ncar-hpc-docs.readthedocs.io/en/latest/pbs/job-scripts/#other-frequently-used-pbs-directives).
 
 PBS joins scheduler stdout/stderr (`#PBS -j oe`). Phases 2–4 still require
 selecting history in each file. Each submission runs training to completion,
@@ -231,19 +239,12 @@ configuration stack, stage start/end UTC timestamps, and exit statuses in
 `train/runtime_metadata.txt` and `train/launcher.log`. Metadata failures do not
 block the experiment. PBS still manages its own joined scheduler output.
 
-The [NCAR Casper queue documentation](https://ncar-hpc-docs.readthedocs.io/en/latest/pbs/charging/#casper-queues)
-sets a 24-hour wall-clock policy. A read-only `qstat -Qf nvgpu casper` check
-found no separate `nvgpu` walltime attribute and a 340-hour routing-queue
-attribute; the routing value does not establish support for a 48-hour GPU job.
-These launchers therefore request the documented 24 hours.
-No complete 300-epoch single-A100 FP32 timing has been measured here. Training,
-validation, final TEST metrics, standalone inference, and plots must all fit
-within that limit. An average full epoch above 288 seconds alone exceeds
-24 hours over 300 epochs; inference and startup reduce the available budget
-further, and later curriculum stages may be slower. Epochs and evaluations
-are never shortened automatically, and these launchers do not implement
-resume/requeue. If a measured experiment exceeds the limit, the complete
-workflow needs a separately approved longer allocation or continuation design.
+The [NCAR Derecho queue documentation](https://ncar-hpc-docs.readthedocs.io/en/latest/pbs/charging/#derecho-queues)
+sets a 12-hour wall-clock limit for `main`; these launchers request that limit.
+Training, validation, final TEST metrics, standalone inference, and plots share
+the same 12-hour allocation. A complete 300-epoch run with these settings has
+not been timed here. Epochs and evaluations are not shortened automatically,
+and the launchers do not implement resume/requeue.
 
 `legacy-scripts/` contains archived infrastructure for provenance/reference
 only. Do not use those scripts for new formal experiments.
@@ -252,9 +253,8 @@ only. Do not use those scripts for new formal experiments.
 
 Top-level `train_issm.sh` and `train_anuga.sh` are direct single-run entrypoints.
 They default to `runtime/issm_fast.yaml` and `runtime/anuga_fast.yaml`, respectively,
-with full-trajectory caching enabled. Set `RUNTIME_CONFIG=configs/runtime/fast.yaml`
-to use the generic loader without caching, or `RUNTIME_CONFIG=''` to omit the
-runtime overlay entirely.
+with full-trajectory caching inherited from `configs/default.yaml`.
+Set `RUNTIME_CONFIG=''` to omit the loader overlay; trajectory caching stays on.
 Formal launchers do not depend on them. For example:
 
 ```bash
@@ -267,6 +267,19 @@ They accept named environment overrides for dataset, protocol, model, history,
 architecture, training horizon, rollout start, TC, and runtime config. Trailing
 arguments are passed directly to `scripts/train.py`. Use these for deliberate
 ad-hoc runs, not as selection defaults for formal Phases 2–4.
+
+For ISSM on Derecho, append the final override to keep a batch of four per rank
+and accumulate two micro-batches per optimizer update:
+
+```bash
+bash train_issm.sh --config configs/runtime/issm_derecho.yaml
+```
+
+The command retains the ISSM loader overlay and uses four ranks by default,
+giving an effective global batch of `4 ranks × 4 samples × 2 = 32`.
+For another explicit ISSM config stack, append this YAML after all other
+`--config` arguments so it takes precedence over earlier batch/accumulation
+settings. ANUGA uses its own existing settings.
 
 An explicit single-process canonical ISSM command is:
 

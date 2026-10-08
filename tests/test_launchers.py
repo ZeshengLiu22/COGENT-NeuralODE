@@ -75,7 +75,12 @@ class LauncherTest(unittest.TestCase):
                 (output / 'metric_table.txt').write_text(METRIC_TABLE + '\n')
         """))
         self.python.chmod(0o755)
+        self.module_capture = self.root / 'modules.txt'
+        module = self.root / 'module'
+        module.write_text('#!/bin/bash\nprintf \'%s\\n\' "$*" >> "$MODULE_CAPTURE"\n')
+        module.chmod(0o755)
         self.env = dict(os.environ)
+        self.env.pop('BASH_FUNC_module%%', None)
         for name in ('DATASET_CONFIG', 'PROTOCOL_CONFIG', 'MODEL_CONFIG', 'RUNTIME_CONFIG', 'HISTORY_CONFIG',
                      'ARCHITECTURE_CONFIG', 'TRAINING_HORIZON_CONFIG', 'ROLLOUT_START_CONFIG',
                      'TEMPORAL_CONSISTENCY_CONFIG', 'SLURM_JOB_ID', 'PBS_JOBID', 'PBS_O_WORKDIR',
@@ -83,12 +88,15 @@ class LauncherTest(unittest.TestCase):
                      'FAKE_TRAIN_EXIT', 'FAKE_INFER_EXIT', 'FAKE_CHECKPOINT'):
             self.env.pop(name, None)
         self.env.update(PROJECT_ROOT=str(self.root), PYTHON_BIN=str(self.python),
+                        PATH=str(self.root) + os.pathsep + self.env['PATH'],
+                        MODULE_CAPTURE=str(self.module_capture),
                         LAUNCHER_CAPTURE=str(self.capture), NPROC='4', CUDA_VISIBLE_DEVICES='',
                         RUN_STAMP='test', RUN_NAME='ad_hoc_test',
                         LOG_FILE=str(self.root / 'logs/launcher.log'))
 
     def run_script(self, path, *args, success=True, **env):
         self.capture.unlink(missing_ok=True)
+        self.module_capture.unlink(missing_ok=True)
         result = subprocess.run(['bash', str(path), *args], env={**self.env, **env}, cwd=self.root,
                                 text=True, capture_output=True, timeout=30)
         if success:
@@ -138,16 +146,17 @@ class LauncherTest(unittest.TestCase):
             execution, dataset, phase, _ = path.relative_to(ROOT / 'launchers').parts
             with self.subTest(script=path.relative_to(ROOT)):
                 result, calls = self.run_script(self.spooled_script(path),
-                    PBS_JOBID='12345.casper-pbs', PBS_O_WORKDIR=str(self.root / 'unrelated submit directory'))
+                    PBS_JOBID='12345.desched1', PBS_O_WORKDIR=str(self.root / 'unrelated submit directory'))
                 training = [call for call in calls if 'scripts/train.py' in call['args']]
                 self.assertEqual(len(training), 1)
                 call = training[0]
                 self.assertEqual(call['cwd'], str(self.root))
-                nproc = 1 if execution == 'PBS' else 4
+                nproc = 4
                 self.assertIn(f'--nproc_per_node={nproc}', call['args'])
                 if execution == 'PBS':
                     self.assertIn('--standalone', call['args'])
-                    self.assertIn('pbs_job_id=12345.casper-pbs', result.stdout)
+                    self.assertIn('pbs_job_id=12345.desched1', result.stdout)
+                    self.assertEqual(self.module_capture.read_text().splitlines(), ['load cuda'])
                 h = int(path.stem[1:]) if phase == '01_history' else 3
                 k = int(path.stem[1:]) if phase == '03_training_horizon' else (180 if dataset == 'issm' else 64)
                 start = 60 if dataset == 'issm' else 8
@@ -160,11 +169,8 @@ class LauncherTest(unittest.TestCase):
                     f'{prefix}/training_horizon/k{k}.yaml', f'{prefix}/rollout_start/known{start}.yaml',
                     f'{prefix}/temporal_consistency/{tc}.yaml', f'configs/runtime/{dataset}_fast.yaml']
                 fields = list(CONFIG_FIELDS)
-                if execution == 'PBS':
-                    if dataset == 'anuga':
-                        expected.append('configs/runtime/anuga_casper.yaml')
-                        fields.append('site')
-                    expected.append('configs/runtime/single_a100.yaml')
+                if execution == 'PBS' and dataset == 'issm':
+                    expected.append('configs/runtime/issm_derecho.yaml')
                     fields.append('final')
                 self.assertEqual(self.configs(call), expected)
                 cfg = load_config_bundle([self.root / item for item in expected])
@@ -176,16 +182,17 @@ class LauncherTest(unittest.TestCase):
                 self.assertTrue(cfg['dataset']['cache_in_memory'])
                 self.assertEqual(cfg['amp']['mode'], 'none')
                 self.assertEqual(cfg['evaluation']['amp_mode'], 'none')
-                self.assertEqual(cfg['training']['grad_accum_steps'], 4 if execution == 'PBS' else 1)
-                batch = 8 if dataset == 'issm' else 1
+                derecho_issm = execution == 'PBS' and dataset == 'issm'
+                self.assertEqual(cfg['training']['grad_accum_steps'], 2 if derecho_issm else 1)
+                protocol_batch = 8 if dataset == 'issm' else 1
+                batch = 4 if derecho_issm else protocol_batch
                 self.assertEqual(cfg['training']['batch_size'], batch)
-                self.assertEqual(nproc * batch * cfg['training']['grad_accum_steps'], 4 * batch)
+                self.assertEqual(nproc * batch * cfg['training']['grad_accum_steps'], 4 * protocol_batch)
                 self.assertEqual(cfg['training']['epochs'], 300)
                 self.assertEqual(cfg['training']['lr'], 0.001)
                 self.assertEqual(cfg['training']['scheduler'], 'cosine')
-                if execution == 'PBS':
-                    data_dir = './data/ISSM/PIG_5000' if dataset == 'issm' else './data/ANUGA/simulation_data_merged'
-                    self.assertEqual(cfg['dataset']['data_dir'], data_dir)
+                data_dir = './data/ISSM/PIG_5000' if dataset == 'issm' else './data/ANUGA/simulation_data_merged'
+                self.assertEqual(cfg['dataset']['data_dir'], data_dir)
                 if phase != '02_architecture':
                     self.assertEqual(cfg['model']['history_encoder']['history_encoder_type'], 'transformer')
                     self.assertTrue(all(cfg['model'][key] for key in (
@@ -200,7 +207,7 @@ class LauncherTest(unittest.TestCase):
                 if execution != 'PBS':
                     self.assertEqual(evaluations, [])
                     continue
-                experiment = f'{dataset}_{phase}_h{h}_k{k}_{architecture}_{tc}_test_pbs12345.casper-pbs'
+                experiment = f'{dataset}_{phase}_h{h}_k{k}_{architecture}_{tc}_test_pbs12345.desched1'
                 args = call['args']
                 self.assertEqual(args[args.index('--run-name') + 1], f'{experiment}/train')
                 run_dir = self.root / 'outputs' / experiment
@@ -276,12 +283,14 @@ class LauncherTest(unittest.TestCase):
                     self.assertTrue(source.startswith('#!/bin/bash -l\n'))
                     self.assertEqual([line for line in source.splitlines() if line.startswith('#PBS')], [
                         f'#PBS -N {path.parts[-3]}_{path.parts[-2][:2]}_{path.stem.split("_")[0]}',
-                        '#PBS -A ULHI0006', '#PBS -q casper',
-                        '#PBS -l select=1:ncpus=16:mpiprocs=1:mem=128GB:ngpus=1:gpu_type=a100_80gb',
-                        '#PBS -l place=shared', '#PBS -l walltime=24:00:00', '#PBS -j oe'])
+                        '#PBS -A ULHI0006', '#PBS -q main',
+                        '#PBS -l select=1:ncpus=64:mpiprocs=4:ompthreads=1:ngpus=4',
+                        '#PBS -l place=excl', '#PBS -l walltime=12:00:00', '#PBS -j oe',
+                        '#PBS -m abe', '#PBS -M zel220@lehigh.edu'])
                     self.assertIn('PROJECT_ROOT="${PROJECT_ROOT:-/glade/u/home/zel/scratch/COGENT-NeuralODE}"', source)
-                    self.assertIn('/glade/work/zel/conda-envs/casper-ml/bin/python', source)
-                    self.assertIn('\nNPROC=1\n', source)
+                    self.assertIn('/glade/work/zel/conda-envs/derecho-ml/bin/python', source)
+                    self.assertIn('\nmodule load cuda\n', source)
+                    self.assertIn('\nNPROC=4\n', source)
                     self.assertNotIn('SLURM', source)
                     self.assertNotIn('#SBATCH', source)
                     self.assertTrue(os.access(path, os.X_OK))
@@ -299,7 +308,7 @@ class LauncherTest(unittest.TestCase):
             for case, env, exit_code in cases:
                 with self.subTest(dataset=dataset, case=case):
                     result, calls = self.run_script(self.spooled_script(path), success=False,
-                        RUN_STAMP=case, PBS_JOBID='77.casper-pbs', **env)
+                        RUN_STAMP=case, PBS_JOBID='77.desched1', **env)
                     self.assertEqual(result.returncode, exit_code)
                     train = next(call for call in calls if 'scripts/train.py' in call['args'])
                     run_name = train['args'][train['args'].index('--run-name') + 1]
@@ -332,14 +341,14 @@ class LauncherTest(unittest.TestCase):
         for dataset in ('issm', 'anuga'):
             path = self.spooled_script(ROOT / f'launchers/PBS/{dataset}/01_history/h1.sh')
             directories = []
-            for job_id in ('100.casper-pbs', '101.casper-pbs'):
+            for job_id in ('100.desched1', '101.desched1'):
                 _, calls = self.run_script(path, RUN_STAMP='same_timestamp', PBS_JOBID=job_id)
                 train = next(call for call in calls if 'scripts/train.py' in call['args'])
                 run_name = train['args'][train['args'].index('--run-name') + 1]
                 directories.append(self.root / 'outputs' / run_name)
             self.assertNotEqual(*directories)
             _, calls = self.run_script(path, success=False,
-                RUN_STAMP='same_timestamp', PBS_JOBID='100.casper-pbs')
+                RUN_STAMP='same_timestamp', PBS_JOBID='100.desched1')
             self.assertEqual(calls, [])
             for directory in directories:
                 self.assertEqual((directory / 'best.pt').read_bytes(), b'best validation weights')
@@ -357,7 +366,7 @@ class LauncherTest(unittest.TestCase):
             # A directory cannot be opened as a metadata file, even when running as root.
             path.write_text(path.read_text().replace(
                 'METADATA_FILE="$TRAIN_DIR/runtime_metadata.txt"', 'METADATA_FILE="$TRAIN_DIR"'))
-            result, calls = self.run_script(path, PBS_JOBID='200.casper-pbs',
+            result, calls = self.run_script(path, PBS_JOBID='200.desched1',
                 PATH=str(unavailable) + os.pathsep + self.env['PATH'])
             self.assertIn('git_commit=unavailable', result.stdout)
             self.assertIn('gpu_model=unavailable', result.stdout)

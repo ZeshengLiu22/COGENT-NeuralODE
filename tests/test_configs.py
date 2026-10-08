@@ -114,18 +114,16 @@ class ConfigTest(unittest.TestCase):
             self.assertEqual(actual, expected)
             self.assertEqual(load_yaml(base / 'full.yaml'), load_yaml(variants[0]))
 
-    def test_runtime_is_safe_and_contains_only_loader_settings(self):
-        cfg = load_yaml(ROOT / 'configs/runtime/fast.yaml')
-        self.assertEqual(set(cfg), {'dataset'})
-        self.assertEqual(set(cfg['dataset']), {'num_workers', 'pin_memory', 'prefetch_factor', 'persistent_workers'})
-        self.assertFalse(load_yaml(ROOT / 'configs/default.yaml')['dataset']['cache_in_memory'])
+    def test_cache_defaults_and_loader_only_runtime_settings(self):
+        self.assertTrue(load_yaml(ROOT / 'configs/default.yaml')['dataset']['cache_in_memory'])
         for dataset in ('issm', 'anuga'):
-            generic = load_config_bundle([ROOT / 'configs' / path for path in (
-                'default.yaml', f'datasets/{dataset}.yaml', f'protocols/{dataset}/main.yaml',
-                'runtime/fast.yaml')])
-            self.assertFalse(generic['dataset']['cache_in_memory'])
+            base = load_config_bundle([ROOT / 'configs' / path for path in (
+                'default.yaml', f'datasets/{dataset}.yaml', f'protocols/{dataset}/main.yaml')])
+            self.assertTrue(base['dataset']['cache_in_memory'])
             formal = load_yaml(ROOT / f'configs/runtime/{dataset}_fast.yaml')
-            self.assertEqual(formal, deep_update(cfg, {'dataset': {'cache_in_memory': True}}))
+            self.assertEqual(set(formal), {'dataset'})
+            self.assertEqual(set(formal['dataset']), {
+                'num_workers', 'pin_memory', 'prefetch_factor', 'persistent_workers'})
             self.assertTrue(canonical(dataset)['dataset']['cache_in_memory'])
 
     def test_layer_ownership_and_dataset_separation(self):
