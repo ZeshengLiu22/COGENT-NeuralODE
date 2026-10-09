@@ -6,6 +6,7 @@
 experiments/**/outputs/
 experiments/**/runs/
 experiments/**/formal_smoke_outputs/
+/legacy-scripts/
 
 # Model checkpoints and binary scientific data
 *.pt

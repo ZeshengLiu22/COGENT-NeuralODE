@@ -1,5 +1,0 @@
-# Short benchmark override after the canonical ISSM stack.
-output_dir: experiments/dataloader_speed_sweep/outputs
-training:
-  epochs: 3
-  val_every: 1
